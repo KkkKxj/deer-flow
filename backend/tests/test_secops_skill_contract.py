@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 DEERFLOW_ROOT = BACKEND_ROOT.parent
 SECOPS_SKILL_ROOT = DEERFLOW_ROOT / "skills" / "custom" / "secops"
