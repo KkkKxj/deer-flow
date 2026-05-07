@@ -294,10 +294,7 @@ def kick_mock_auth_user_sessions(username: str) -> dict[str, Any]:
             token = _login(client, base_url)
             sessions_response = client.get(f"{base_url}/api/mock/auth/sessions", headers=_auth_headers(token))
             sessions_response.raise_for_status()
-            matching_sessions = [
-                item for item in sessions_response.json().get("sessions", [])
-                if item.get("username") == username
-            ]
+            matching_sessions = [item for item in sessions_response.json().get("sessions", []) if item.get("username") == username]
 
             kicked_ids: list[str] = []
             for session in matching_sessions:

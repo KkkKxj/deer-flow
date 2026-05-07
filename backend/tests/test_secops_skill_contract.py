@@ -57,8 +57,8 @@ def test_mock_illegal_login_skill_documents_complete_v2_sop():
 
     required_fragments = (
         "Call `get_alert_workspace_context()` first",
-        '`alert.sourceIp`',
-        '`commonIp`',
+        "`alert.sourceIp`",
+        "`commonIp`",
         'get_mock_auth_user_context(username="test")',
         'kick_mock_auth_user_sessions(username="test")',
         'disable_mock_auth_user(username="test")',
