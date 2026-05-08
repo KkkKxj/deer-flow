@@ -22,11 +22,15 @@ venv/
 
 # Environment variables
 .env
+!/.env
+!/frontend/.env
 
 # Configuration files
 config.yaml
 mcp_config.json
 extensions_config.json
+!/config.yaml
+!/extensions_config.json
 
 # IDE
 .idea/
