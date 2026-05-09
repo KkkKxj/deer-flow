@@ -5,8 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 IMAGE_REPO="${DEER_FLOW_IMAGE_REPO:-kkk2099/kkk}"
-IMAGE_VERSION_OVERRIDE="${DEER_FLOW_IMAGE_VERSION:-}"
-IMAGE_VERSION_FILE="${DEER_FLOW_IMAGE_VERSION_FILE:-$REPO_ROOT/.image-version}"
+IMAGE_VERSION_FILE="$REPO_ROOT/.image-version"
 IMAGE_VERSION=""
 REGISTRY_SERVICES="${DEER_FLOW_REGISTRY_SERVICES:-frontend gateway}"
 AUTO_GIT="${DEER_FLOW_RELEASE_GIT:-1}"
@@ -30,10 +29,11 @@ Usage:
 
   scripts/release.sh up
       Pull/tag registry images, then start with the native deploy script
-      without rebuilding.
+      without rebuilding, then provision the fixed SecOps user.
 
   scripts/release.sh start
-      Start with the native deploy script without pull/build.
+      Start with the native deploy script without pull/build, then provision
+      the fixed SecOps user.
 
   scripts/release.sh down
       Stop with the native deploy script.
@@ -43,15 +43,12 @@ Usage:
 
 Environment:
   DEER_FLOW_IMAGE_REPO          default: kkk2099/kkk
-  DEER_FLOW_IMAGE_VERSION       exact version override
-  DEER_FLOW_IMAGE_VERSION_FILE  default: .image-version
   DEER_FLOW_REGISTRY_SERVICES   default: frontend gateway
   DEER_FLOW_RELEASE_GIT         commit and push .image-version after release, default: 1
 
 Examples:
   scripts/release.sh
   scripts/release.sh up
-  DEER_FLOW_IMAGE_VERSION=1.0.1 scripts/release.sh
   DEER_FLOW_REGISTRY_SERVICES="frontend gateway provisioner" scripts/release.sh
 EOF
 }
@@ -88,35 +85,25 @@ next_patch_version() {
 }
 
 resolve_image_version() {
-    if [ -n "$IMAGE_VERSION_OVERRIDE" ]; then
-        printf '%s\n' "$IMAGE_VERSION_OVERRIDE"
-    else
-        read_file_version
-    fi
+    read_file_version
 }
 
 resolve_release_version() {
-    if [ -n "$IMAGE_VERSION_OVERRIDE" ]; then
-        printf '%s\n' "$IMAGE_VERSION_OVERRIDE"
-    else
-        next_patch_version "$(read_file_version)"
-    fi
+    next_patch_version "$(read_file_version)"
 }
 
 set_image_version() {
     IMAGE_VERSION="$1"
     validate_version "$IMAGE_VERSION" || {
-        echo "Invalid DEER_FLOW_IMAGE_VERSION: $IMAGE_VERSION" >&2
+        echo "Invalid image version: $IMAGE_VERSION" >&2
         exit 1
     }
-    export DEER_FLOW_IMAGE_REPO="$IMAGE_REPO"
-    export DEER_FLOW_IMAGE_VERSION="$IMAGE_VERSION"
 }
 
 write_image_version() {
     local version="$1"
     validate_version "$version" || {
-        echo "Invalid DEER_FLOW_IMAGE_VERSION: $version" >&2
+        echo "Invalid image version: $version" >&2
         exit 1
     }
     printf '%s\n' "$version" > "$IMAGE_VERSION_FILE"
@@ -244,10 +231,12 @@ case "${1:-release}" in
         pull_images
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
+        bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     start)
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
+        bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     down)
         ensure_runtime_env_files
