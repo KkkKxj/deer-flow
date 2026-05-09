@@ -22,7 +22,6 @@ venv/
 
 # Environment variables
 .env
-!/.env
 !/frontend/.env
 
 # Configuration files
