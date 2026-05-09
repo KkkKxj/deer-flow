@@ -130,6 +130,52 @@ ensure_env_file() {
 ensure_runtime_env_files() {
     ensure_env_file "$REPO_ROOT/.env" "$REPO_ROOT/.env.example"
     ensure_env_file "$REPO_ROOT/frontend/.env" "$REPO_ROOT/frontend/.env.example"
+    ensure_auth_jwt_secret
+}
+
+ensure_auth_jwt_secret() {
+    local env_file="$REPO_ROOT/.env"
+    local existing=""
+
+    if [ -f "$env_file" ]; then
+        existing="$(awk -F= '$1 == "AUTH_JWT_SECRET" { print substr($0, index($0, "=") + 1); exit }' "$env_file")"
+    fi
+
+    if [ -n "$existing" ]; then
+        export AUTH_JWT_SECRET="$existing"
+        echo "AUTH_JWT_SECRET already present in $env_file"
+        return
+    fi
+
+    local secret
+    secret="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
+    local tmp_file
+    tmp_file="$(mktemp)"
+    if [ -f "$env_file" ]; then
+        awk -v key="AUTH_JWT_SECRET" -v value="$secret" '
+            BEGIN { written=0 }
+            $0 ~ "^" key "=" {
+                if (!written) {
+                    print key "=" value
+                    written=1
+                }
+                next
+            }
+            { print }
+            END {
+                if (!written) {
+                    print key "=" value
+                }
+            }
+        ' "$env_file" > "$tmp_file"
+    else
+        printf 'AUTH_JWT_SECRET=%s\n' "$secret" > "$tmp_file"
+    fi
+    mv "$tmp_file" "$env_file"
+
+    export AUTH_JWT_SECRET="$secret"
+    echo "Generated AUTH_JWT_SECRET in $env_file"
 }
 
 sync_release_branch() {

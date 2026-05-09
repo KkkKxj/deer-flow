@@ -58,9 +58,20 @@ try:
             raise RuntimeError("DeerFlow users table is not ready")
         time.sleep(1)
 
-    row = conn.execute("select 1 from users where id=?", (user_id,)).fetchone()
+    row = conn.execute(
+        "select email, system_role, needs_setup from users where id=?",
+        (user_id,),
+    ).fetchone()
     if row:
-        print(f"DeerFlow fixed user exists: {user_id}")
+        if row[0] == email and row[1] == "admin" and row[2] == 0:
+            print(f"DeerFlow fixed admin exists: {user_id}")
+        else:
+            conn.execute(
+                "update users set email=?, system_role='admin', needs_setup=0 where id=?",
+                (email, user_id),
+            )
+            conn.commit()
+            print(f"Updated DeerFlow fixed user to admin: {user_id} {email}")
         sys.exit(0)
 
     digest = base64.b64encode(hashlib.sha256(password.encode("utf-8")).digest())
@@ -69,10 +80,10 @@ try:
 
     conn.execute(
         "insert into users (id, email, password_hash, system_role, created_at, oauth_provider, oauth_id, needs_setup, token_version) values (?, ?, ?, ?, ?, NULL, NULL, 0, 0)",
-        (user_id, email, password_hash, "user", created_at),
+        (user_id, email, password_hash, "admin", created_at),
     )
     conn.commit()
-    print(f"Created DeerFlow fixed user: {user_id} {email}")
+    print(f"Created DeerFlow fixed admin: {user_id} {email}")
 finally:
     conn.close()
 PY
