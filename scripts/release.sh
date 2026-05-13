@@ -38,6 +38,11 @@ Usage:
   scripts/release.sh down
       Stop with the native deploy script.
 
+  scripts/release.sh reset-data
+      Stop containers with the native deploy script, then remove DeerFlow
+      business runtime data from DEER_FLOW_HOME. Run up/start afterwards to
+      reinitialize the database and fixed SecOps user.
+
   scripts/release.sh images
       Print local-to-registry image mapping.
 
@@ -292,6 +297,12 @@ case "${1:-release}" in
         set_image_version "$(resolve_image_version)"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" down
+        ;;
+    reset-data)
+        set_image_version "$(resolve_image_version)"
+        ensure_runtime_env_files
+        "$REPO_ROOT/scripts/deploy.sh" down
+        "$REPO_ROOT/scripts/reset-runtime-data.sh"
         ;;
     images)
         set_image_version "$(resolve_image_version)"

@@ -20,16 +20,33 @@ export DEER_FLOW_EXTENSIONS_CONFIG_PATH="${DEER_FLOW_EXTENSIONS_CONFIG_PATH:-$RE
 export DEER_FLOW_DOCKER_SOCKET="${DEER_FLOW_DOCKER_SOCKET:-/var/run/docker.sock}"
 export DEER_FLOW_REPO_ROOT="${DEER_FLOW_REPO_ROOT:-$REPO_ROOT}"
 
+PROVISION_MAX_ATTEMPTS="${DEER_FLOW_PROVISION_MAX_ATTEMPTS:-30}"
+PROVISION_RETRY_DELAY_SECONDS="${DEER_FLOW_PROVISION_RETRY_DELAY_SECONDS:-5}"
+PROVISION_DB_READY_TIMEOUT_SECONDS="${DEER_FLOW_PROVISION_DB_READY_TIMEOUT_SECONDS:-30}"
+
+case "$PROVISION_MAX_ATTEMPTS" in
+    ""|*[!0-9]*)
+        echo "DEER_FLOW_PROVISION_MAX_ATTEMPTS must be a positive integer" >&2
+        exit 1
+        ;;
+    0)
+        echo "DEER_FLOW_PROVISION_MAX_ATTEMPTS must be greater than 0" >&2
+        exit 1
+        ;;
+esac
+
 if [ -z "${BETTER_AUTH_SECRET:-}" ] && [ -f "$DEER_FLOW_HOME/.better-auth-secret" ]; then
     BETTER_AUTH_SECRET="$(cat "$DEER_FLOW_HOME/.better-auth-secret")"
 fi
 export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-placeholder}"
 
-docker compose -p deer-flow -f "$COMPOSE_FILE" exec -T \
-    -e SECOPS_FIXED_DEERFLOW_USER_ID="$SECOPS_FIXED_DEERFLOW_USER_ID" \
-    -e SECOPS_FIXED_DEERFLOW_EMAIL="$SECOPS_FIXED_DEERFLOW_EMAIL" \
-    -e SECOPS_FIXED_DEERFLOW_PASSWORD="$SECOPS_FIXED_DEERFLOW_PASSWORD" \
-    gateway sh -c "cd backend && uv run --no-sync python -" <<'PY'
+run_provision_once() {
+    docker compose -p deer-flow -f "$COMPOSE_FILE" exec -T \
+        -e SECOPS_FIXED_DEERFLOW_USER_ID="$SECOPS_FIXED_DEERFLOW_USER_ID" \
+        -e SECOPS_FIXED_DEERFLOW_EMAIL="$SECOPS_FIXED_DEERFLOW_EMAIL" \
+        -e SECOPS_FIXED_DEERFLOW_PASSWORD="$SECOPS_FIXED_DEERFLOW_PASSWORD" \
+        -e DEER_FLOW_PROVISION_DB_READY_TIMEOUT_SECONDS="$PROVISION_DB_READY_TIMEOUT_SECONDS" \
+        gateway sh -c "cd backend && uv run --no-sync python -" <<'PY'
 import base64
 import datetime as dt
 import hashlib
@@ -44,10 +61,19 @@ db_path = "/app/backend/.deer-flow/data/deerflow.db"
 user_id = os.environ["SECOPS_FIXED_DEERFLOW_USER_ID"]
 email = os.environ["SECOPS_FIXED_DEERFLOW_EMAIL"]
 password = os.environ["SECOPS_FIXED_DEERFLOW_PASSWORD"]
+ready_timeout_seconds = float(
+    os.environ.get("DEER_FLOW_PROVISION_DB_READY_TIMEOUT_SECONDS", "30")
+)
 
-deadline = time.monotonic() + 30
+deadline = time.monotonic() + ready_timeout_seconds
+while not os.path.exists(db_path):
+    if time.monotonic() >= deadline:
+        raise RuntimeError("DeerFlow database file is not ready")
+    time.sleep(1)
+
 conn = sqlite3.connect(db_path)
 try:
+    deadline = time.monotonic() + ready_timeout_seconds
     while True:
         table = conn.execute(
             "select 1 from sqlite_master where type='table' and name='users'"
@@ -87,3 +113,21 @@ try:
 finally:
     conn.close()
 PY
+}
+
+attempt=1
+while [ "$attempt" -le "$PROVISION_MAX_ATTEMPTS" ]; do
+    if run_provision_once; then
+        exit 0
+    fi
+
+    status=$?
+    if [ "$attempt" -ge "$PROVISION_MAX_ATTEMPTS" ]; then
+        echo "Failed to provision DeerFlow fixed admin after $PROVISION_MAX_ATTEMPTS attempt(s)" >&2
+        exit "$status"
+    fi
+
+    echo "DeerFlow fixed admin provision attempt $attempt/$PROVISION_MAX_ATTEMPTS failed; retrying in ${PROVISION_RETRY_DELAY_SECONDS}s..." >&2
+    sleep "$PROVISION_RETRY_DELAY_SECONDS"
+    attempt="$((attempt + 1))"
+done
