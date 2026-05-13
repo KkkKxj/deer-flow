@@ -1,4 +1,4 @@
-config_version: 8
+config_version: 9
 log_level: info
 token_usage:
   enabled: false
@@ -91,6 +91,9 @@ tool_search:
 uploads:
   pdf_converter: auto
   auto_convert_documents: false
+  max_files: 10
+  max_file_size: 52428800
+  max_total_size: 104857600
 sandbox:
   use: deerflow.sandbox.local:LocalSandboxProvider
   allow_host_bash: true
@@ -148,3 +151,11 @@ run_events:
   backend: memory
   max_trace_content: 10240
   track_token_usage: true
+loop_detection:
+  enabled: true
+  warn_threshold: 3
+  hard_limit: 5
+  window_size: 20
+  max_tracked_threads: 100
+  tool_freq_warn: 30
+  tool_freq_hard_limit: 50

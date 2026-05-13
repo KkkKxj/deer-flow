@@ -44,7 +44,7 @@ Usage:
 Environment:
   DEER_FLOW_IMAGE_REPO          default: kkk2099/kkk
   DEER_FLOW_REGISTRY_SERVICES   default: frontend gateway
-  DEER_FLOW_RELEASE_GIT         commit and push .image-version after release, default: 1
+  DEER_FLOW_RELEASE_GIT         sync before release/up and commit/push after release, default: 1
 
 Examples:
   scripts/release.sh
@@ -185,7 +185,7 @@ sync_release_branch() {
     fi
 
     if ! command -v git >/dev/null 2>&1; then
-        echo "git is required to sync $IMAGE_VERSION_FILE before release" >&2
+        echo "git is required to sync $IMAGE_VERSION_FILE before release or startup" >&2
         exit 1
     fi
 
@@ -248,13 +248,11 @@ pull_images() {
 }
 
 cd "$REPO_ROOT"
-set_image_version "$(resolve_image_version)"
 
 case "${1:-release}" in
     release)
         sync_release_branch
-        release_version="$(resolve_release_version)"
-        set_image_version "$release_version"
+        set_image_version "$(resolve_release_version)"
         echo "Releasing DeerFlow image version: $IMAGE_VERSION"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" build
@@ -264,31 +262,39 @@ case "${1:-release}" in
         commit_and_push_version
         ;;
     build)
+        set_image_version "$(resolve_image_version)"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" build
         ;;
     push)
+        set_image_version "$(resolve_image_version)"
         push_images
         ;;
     pull)
+        set_image_version "$(resolve_image_version)"
         pull_images
         ;;
     up)
+        sync_release_branch
+        set_image_version "$(resolve_image_version)"
         pull_images
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     start)
+        set_image_version "$(resolve_image_version)"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     down)
+        set_image_version "$(resolve_image_version)"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" down
         ;;
     images)
+        set_image_version "$(resolve_image_version)"
         print_images
         ;;
     -h|--help|help)
