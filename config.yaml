@@ -102,6 +102,8 @@ sandbox:
   ls_output_max_chars: 20000
 skills:
   path: ../skills
+  # Production only: gateway mounts repo skills at /app/skills; online config should use this absolute path.
+  # path: /app/skills
   container_path: /mnt/skills
 title:
   enabled: true
