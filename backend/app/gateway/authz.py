@@ -33,7 +33,7 @@ import functools
 import inspect
 from collections.abc import Callable
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, get_type_hints
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request
 
@@ -119,33 +119,6 @@ _ALL_PERMISSIONS: list[str] = [
 ]
 
 
-def _resolved_route_signature(func: Callable[..., Any]) -> inspect.Signature:
-    """Return a signature with postponed annotations resolved for FastAPI.
-
-    FastAPI inspects the decorator wrapper but resolves annotations against the
-    wrapper module. Routes using ``from __future__ import annotations`` would
-    otherwise leave request models as unresolved ForwardRef query parameters.
-    """
-    signature = inspect.signature(func)
-    try:
-        hints = get_type_hints(
-            func,
-            globalns=getattr(func, "__globals__", None),
-            include_extras=True,
-        )
-    except Exception:
-        return signature
-
-    parameters = [
-        parameter.replace(annotation=hints.get(name, parameter.annotation))
-        for name, parameter in signature.parameters.items()
-    ]
-    return signature.replace(
-        parameters=parameters,
-        return_annotation=hints.get("return", signature.return_annotation),
-    )
-
-
 def _make_test_request_stub() -> Any:
     """Create a minimal request-like object for direct unit calls.
 
@@ -218,7 +191,6 @@ def require_auth[**P, T](func: Callable[P, T]) -> Callable[P, T]:
 
         return await func(*args, **kwargs)
 
-    wrapper.__signature__ = _resolved_route_signature(func)  # type: ignore[attr-defined]
     return wrapper
 
 
@@ -324,7 +296,6 @@ def require_permission(
 
             return await func(*args, **kwargs)
 
-        wrapper.__signature__ = _resolved_route_signature(func)  # type: ignore[attr-defined]
         return wrapper
 
     return decorator
