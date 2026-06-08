@@ -1,4 +1,4 @@
-config_version: 9
+config_version: 11
 log_level: info
 token_usage:
   enabled: false
@@ -23,6 +23,46 @@ models:
     extra_body:
       thinking:
         type: disabled
+- name: qwen3.7-plus
+  display_name: Qwen3.7-Plus
+  use: langchain_openai:ChatOpenAI
+  model: qwen3.7-plus
+  api_key: $DASHSCOPE_API_KEY
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  request_timeout: 600.0
+  max_retries: 2
+  max_tokens: 8192
+  temperature: 0.7
+  supports_thinking: true
+  supports_vision: true
+  when_thinking_enabled:
+    extra_body:
+      thinking:
+        type: enabled
+  when_thinking_disabled:
+    extra_body:
+      thinking:
+        type: disabled
+- name: deepseek-v4-flash
+  display_name: DeepSeek V4 Flash
+  use: langchain_openai:ChatOpenAI
+  model: deepseek-v4-flash
+  api_key: sk-dd7349934b6d4e94a8b7e78632774252
+  base_url: https://api.deepseek.com
+  request_timeout: 600.0
+  max_retries: 2
+  max_tokens: 8192
+  temperature: 0.7
+- name: deepseek-v4-pro
+  display_name: DeepSeek V4 Pro
+  use: langchain_openai:ChatOpenAI
+  model: deepseek-v4-pro
+  api_key: sk-dd7349934b6d4e94a8b7e78632774252
+  base_url: https://api.deepseek.com
+  request_timeout: 600.0
+  max_retries: 2
+  max_tokens: 8192
+  temperature: 0.7
 tool_groups:
 - name: web
 - name: file:read
@@ -102,8 +142,6 @@ sandbox:
   ls_output_max_chars: 20000
 skills:
   path: ../skills
-  # Production only: gateway mounts repo skills at /app/skills; online config should use this absolute path.
-  # path: /app/skills
   container_path: /mnt/skills
 title:
   enabled: true
@@ -161,3 +199,17 @@ loop_detection:
   max_tracked_threads: 100
   tool_freq_warn: 30
   tool_freq_hard_limit: 50
+tool_output:
+  enabled: true
+  externalize_min_chars: 12000
+  preview_head_chars: 2000
+  preview_tail_chars: 1000
+  fallback_max_chars: 30000
+  fallback_head_chars: 8000
+  fallback_tail_chars: 3000
+  storage_subdir: .tool-results
+  exempt_tools:
+  - read_file
+  - read_file_tool
+safety_finish_reason:
+  enabled: true
