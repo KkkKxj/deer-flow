@@ -9,6 +9,7 @@ IMAGE_VERSION_FILE="$REPO_ROOT/.image-version"
 IMAGE_VERSION=""
 REGISTRY_SERVICES="${DEER_FLOW_REGISTRY_SERVICES:-frontend gateway}"
 AUTO_GIT="${DEER_FLOW_RELEASE_GIT:-1}"
+SECOPS_DEERFLOW_NETWORK="${SECOPS_DEERFLOW_NETWORK:-secops-deerflow}"
 
 usage() {
     cat <<EOF
@@ -231,6 +232,30 @@ print_images() {
     done
 }
 
+ensure_secops_deerflow_network() {
+    if ! docker network inspect "$SECOPS_DEERFLOW_NETWORK" >/dev/null 2>&1; then
+        docker network create "$SECOPS_DEERFLOW_NETWORK" >/dev/null
+    fi
+}
+
+connect_nginx_to_secops_network() {
+    ensure_secops_deerflow_network
+
+    if ! docker container inspect deer-flow-nginx >/dev/null 2>&1; then
+        echo "deer-flow-nginx is not present; skipped $SECOPS_DEERFLOW_NETWORK network attach"
+        return
+    fi
+
+    if docker inspect deer-flow-nginx --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
+        | grep -Fx "$SECOPS_DEERFLOW_NETWORK" >/dev/null; then
+        echo "deer-flow-nginx already attached to $SECOPS_DEERFLOW_NETWORK"
+        return
+    fi
+
+    docker network connect --alias deer-flow-nginx "$SECOPS_DEERFLOW_NETWORK" deer-flow-nginx
+    echo "Attached deer-flow-nginx to $SECOPS_DEERFLOW_NETWORK"
+}
+
 tag_for_push() {
     for service in $REGISTRY_SERVICES; do
         docker image inspect "$(local_image "$service")" >/dev/null
@@ -285,12 +310,14 @@ case "${1:-release}" in
         pull_images
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
+        connect_nginx_to_secops_network
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     start)
         set_image_version "$(resolve_image_version)"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
+        connect_nginx_to_secops_network
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     down)
