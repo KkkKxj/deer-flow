@@ -53,7 +53,12 @@ case "$*" in
     "pull kkk2099/kkk:deer-flow-frontend-2.0.0"|\
     "tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend"|\
     "pull kkk2099/kkk:deer-flow-gateway-2.0.0"|\
-    "tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway")
+    "tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway"|\
+    "network create secops-deerflow")
+        ;;
+    "network inspect secops-deerflow"|\
+    "container inspect deer-flow-nginx")
+        exit 1
         ;;
     *)
         printf 'unexpected docker arguments: %s\n' "$*" >&2
@@ -74,6 +79,9 @@ docker tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend
 docker pull kkk2099/kkk:deer-flow-gateway-2.0.0
 docker tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway
 deploy start
+docker network inspect secops-deerflow
+docker network create secops-deerflow
+docker container inspect deer-flow-nginx
 provision
 EOF
 

@@ -26,7 +26,7 @@
 services:
   # ── Reverse Proxy ──────────────────────────────────────────────────────────
   nginx:
-    image: nginx:alpine
+    image: ${DEER_FLOW_NGINX_IMAGE:-nginx:alpine}
     container_name: deer-flow-nginx
     ports:
       - "${PORT:-2026}:2026"
