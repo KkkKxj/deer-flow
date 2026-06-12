@@ -65,6 +65,80 @@ test.describe("Thread history", () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
+  test("existing thread joins an active run created by another client", async ({
+    page,
+  }) => {
+    const activeRunId = "active-run-1";
+    let joinStreamCalled = false;
+
+    mockLangGraphAPI(page, {
+      threads: [
+        {
+          ...THREADS[0]!,
+          runs: [
+            {
+              run_id: activeRunId,
+              status: "running",
+              created_at: "2025-01-01T00:00:00Z",
+              updated_at: "2025-01-01T00:00:01Z",
+            },
+          ],
+        },
+        THREADS[1]!,
+      ],
+    });
+
+    await page.route(
+      new RegExp(
+        `/api/langgraph/threads/${MOCK_THREAD_ID}/runs/${activeRunId}/stream(?:\\?|$)`,
+      ),
+      (route) => {
+        joinStreamCalled = true;
+        const body = [
+          {
+            event: "metadata",
+            data: { run_id: activeRunId, thread_id: MOCK_THREAD_ID },
+          },
+          {
+            event: "values",
+            data: {
+              messages: [
+                {
+                  type: "human",
+                  id: "active-human-1",
+                  content: [{ type: "text", text: "Continue existing run" }],
+                },
+                {
+                  type: "ai",
+                  id: "active-ai-1",
+                  content: "Joined active run from another client",
+                },
+              ],
+            },
+          },
+          { event: "end", data: {} },
+        ]
+          .map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`)
+          .join("");
+
+        return route.fulfill({
+          status: 200,
+          contentType: "text/event-stream",
+          body,
+        });
+      },
+    );
+
+    await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    await expect.poll(() => joinStreamCalled, { timeout: 30_000 }).toBeTruthy();
+    await expect(
+      page.getByText("Joined active run from another client"),
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
   test("new chat does not show previous thread messages after client-side navigation", async ({
     page,
   }) => {

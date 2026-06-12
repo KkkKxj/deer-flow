@@ -28,6 +28,18 @@ export type MockThread = {
   metadata?: Record<string, unknown>;
   messages?: unknown[];
   artifacts?: string[];
+  runs?: MockRun[];
+};
+
+export type MockRun = {
+  run_id: string;
+  thread_id?: string;
+  assistant_id?: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+  kwargs?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type MockAgent = {
@@ -247,24 +259,36 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     if (route.request().method() === "GET") {
       const url = route.request().url();
       const matchingThread = threads.find((t) => url.includes(t.thread_id));
+      const defaultRun = matchingThread
+        ? {
+            run_id: `run-${matchingThread.thread_id}`,
+            thread_id: matchingThread.thread_id,
+            assistant_id: "lead_agent",
+            status: "success",
+            metadata: {},
+            kwargs: {},
+            created_at: "2025-01-01T00:00:00Z",
+            updated_at: matchingThread.updated_at ?? "2025-01-01T00:00:00Z",
+          }
+        : null;
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(
           matchingThread
-            ? [
-                {
-                  run_id: `run-${matchingThread.thread_id}`,
-                  thread_id: matchingThread.thread_id,
-                  assistant_id: "lead_agent",
-                  status: "success",
-                  metadata: {},
-                  kwargs: {},
-                  created_at: "2025-01-01T00:00:00Z",
-                  updated_at:
-                    matchingThread.updated_at ?? "2025-01-01T00:00:00Z",
-                },
-              ]
+            ? (matchingThread.runs?.map((run) => ({
+                run_id: run.run_id,
+                thread_id: run.thread_id ?? matchingThread.thread_id,
+                assistant_id: run.assistant_id ?? "lead_agent",
+                status: run.status ?? "success",
+                metadata: run.metadata ?? {},
+                kwargs: run.kwargs ?? {},
+                created_at: run.created_at ?? "2025-01-01T00:00:00Z",
+                updated_at:
+                  run.updated_at ??
+                  matchingThread.updated_at ??
+                  "2025-01-01T00:00:00Z",
+              })) ?? [defaultRun])
             : [],
         ),
       });
