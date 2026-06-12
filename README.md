@@ -671,6 +671,8 @@ The Web UI composer also supports browser-based voice dictation when the browser
 
 Interrupted first-turn runs still persist a fallback conversation title, so stopping a streaming response does not leave the thread as "Untitled" after refresh.
 
+Opening an existing Web UI conversation attaches to its latest pending or running backend run, including work started by another browser or client, so the running state and streamed output appear without a manual refresh. Streams started by the current Web UI and SDK-managed reconnects keep their existing single subscription instead of being joined a second time.
+
 In the Web UI, completed assistant turns can be branched into a new main conversation. The new thread starts from that turn's checkpoint. Because workspace files are not checkpointed, the branch only receives a best-effort copy of the current workspace when you branch from the latest turn; branching from an older turn keeps just the restored message history so the branch never inherits files that were created in a later part of the conversation.
 
 ```
