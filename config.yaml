@@ -1,4 +1,4 @@
-config_version: 11
+config_version: 12
 log_level: info
 token_usage:
   enabled: false
@@ -176,6 +176,7 @@ memory:
   fact_confidence_threshold: 0.7
   injection_enabled: true
   max_injection_tokens: 2000
+  token_counting: tiktoken
 skill_evolution:
   enabled: true
   moderation_model_name: null
