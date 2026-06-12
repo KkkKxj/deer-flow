@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import {
   buildRunMessagesUrl,
+  findLatestActiveRun,
   findLatestUnloadedRunIndex,
   getNextRunMessagesBeforeSeq,
   getOldestRunMessageSeq,
@@ -353,6 +354,38 @@ test("findLatestUnloadedRunIndex skips already-loaded runs and returns the next 
 test("findLatestUnloadedRunIndex returns -1 when every run is already loaded", () => {
   const runs = [{ run_id: "R2" }, { run_id: "R1" }] as unknown as Run[];
   expect(findLatestUnloadedRunIndex(runs, new Set(["R1", "R2"]))).toBe(-1);
+});
+
+test("findLatestActiveRun returns the newest pending or running run", () => {
+  const runs = [
+    {
+      run_id: "completed-newer",
+      status: "success",
+      updated_at: "2026-05-22T00:03:00Z",
+    },
+    {
+      run_id: "running-newest",
+      status: "running",
+      updated_at: "2026-05-22T00:02:00Z",
+    },
+    {
+      run_id: "pending-older",
+      status: "pending",
+      updated_at: "2026-05-22T00:01:00Z",
+    },
+  ] as unknown as Run[];
+
+  expect(findLatestActiveRun(runs)?.run_id).toBe("running-newest");
+});
+
+test("findLatestActiveRun returns undefined when no run is active", () => {
+  const runs = [
+    { run_id: "success-run", status: "success" },
+    { run_id: "error-run", status: "error" },
+    { run_id: "cancelled-run", status: "cancelled" },
+  ] as unknown as Run[];
+
+  expect(findLatestActiveRun(runs)).toBeUndefined();
 });
 
 test("loading runs in newest-first order and prepending pages yields chronological messages (regression for #3352)", () => {

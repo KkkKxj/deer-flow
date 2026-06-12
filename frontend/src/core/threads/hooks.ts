@@ -70,6 +70,17 @@ function isNonEmptyString(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+const ACTIVE_RUN_STATUSES = new Set<Run["status"]>(["pending", "running"]);
+
+function getRunUpdatedTime(run: Run): number | null {
+  const timestamp = run.updated_at ?? run.created_at;
+  if (!timestamp) {
+    return null;
+  }
+  const time = Date.parse(timestamp);
+  return Number.isNaN(time) ? null : time;
+}
+
 const SUMMARIZATION_MIDDLEWARE_UPDATE_KEYS = new Set([
   "SummarizationMiddleware.before_model",
   "DeerFlowSummarizationMiddleware.before_model",
@@ -132,6 +143,36 @@ export function findLatestUnloadedRunIndex(
     }
   }
   return -1;
+}
+
+export function findLatestActiveRun(
+  runs: Run[] | null | undefined,
+): Run | undefined {
+  let latestRun: Run | undefined;
+  let latestUpdatedTime: number | null = null;
+
+  for (const run of runs ?? []) {
+    if (!run || !ACTIVE_RUN_STATUSES.has(run.status)) {
+      continue;
+    }
+
+    const updatedTime = getRunUpdatedTime(run);
+    if (!latestRun) {
+      latestRun = run;
+      latestUpdatedTime = updatedTime;
+      continue;
+    }
+
+    if (
+      updatedTime !== null &&
+      (latestUpdatedTime === null || updatedTime > latestUpdatedTime)
+    ) {
+      latestRun = run;
+      latestUpdatedTime = updatedTime;
+    }
+  }
+
+  return latestRun;
 }
 
 export const MAX_CONSECUTIVE_EMPTY_RUN_LOADS = 5;
@@ -457,6 +498,8 @@ export function useThreadStream({
   const threadIdRef = useRef<string | null>(threadId ?? null);
   const startedRef = useRef(false);
   const pendingUsageBaselineMessageIdsRef = useRef<Set<string>>(new Set());
+  const joinedActiveRunIdsRef = useRef<Set<string>>(new Set());
+  const activeRunJoinInFlightRef = useRef<string | null>(null);
   const listeners = useRef({
     onSend,
     onStart,
@@ -465,6 +508,7 @@ export function useThreadStream({
   });
 
   const {
+    runs,
     messages: history,
     hasMore: hasMoreHistory,
     loadMore: loadMoreHistory,
@@ -717,6 +761,52 @@ export function useThreadStream({
     },
   });
 
+  useEffect(() => {
+    if (isMock || !threadId || thread.isLoading) {
+      return;
+    }
+
+    const activeRun = findLatestActiveRun(runs);
+    const activeRunId = activeRun?.run_id;
+    if (!activeRunId) {
+      return;
+    }
+
+    if (
+      joinedActiveRunIdsRef.current.has(activeRunId) ||
+      activeRunJoinInFlightRef.current === activeRunId
+    ) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        if (window.sessionStorage.getItem(`lg:stream:${threadId}`)) {
+          return;
+        }
+      } catch {
+        // Ignore storage access failures; joining the active run is best effort.
+      }
+    }
+
+    joinedActiveRunIdsRef.current.add(activeRunId);
+    activeRunJoinInFlightRef.current = activeRunId;
+    setLiveMessagesThreadId(threadId);
+    void thread
+      .joinStream(activeRunId, undefined, {
+        streamMode: ["values", "messages-tuple"],
+      })
+      .catch((error) => {
+        joinedActiveRunIdsRef.current.delete(activeRunId);
+        console.warn("Failed to join active run.", error);
+      })
+      .finally(() => {
+        if (activeRunJoinInFlightRef.current === activeRunId) {
+          activeRunJoinInFlightRef.current = null;
+        }
+      });
+  }, [isMock, runs, thread, threadId]);
+
   const hasVisibleStreamState =
     Boolean(threadId) || liveMessagesThreadId === currentViewThreadId;
   const persistedMessages = useMemo(
@@ -751,6 +841,8 @@ export function useThreadStream({
     messagesRef.current = [];
     summarizedRef.current = new Set<string>();
     pendingUsageBaselineMessageIdsRef.current = new Set();
+    joinedActiveRunIdsRef.current = new Set();
+    activeRunJoinInFlightRef.current = null;
     prevHumanMsgCountRef.current =
       latestMessageCountsRef.current.humanMessageCount;
   }, [threadId]);
