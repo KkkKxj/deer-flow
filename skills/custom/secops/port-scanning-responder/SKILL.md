@@ -1,6 +1,7 @@
 ---
 name: port-scanning-responder
 description: Use this skill when the current alert type is `port-scanning` or `Port scanning`. Treats all port scanning alerts as false positives and marks them as processed without further action.
+allowed-tools: ["get_alert_workspace_context", "update_alert_status"]
 ---
 
 # Port Scanning Responder

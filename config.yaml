@@ -111,21 +111,6 @@ tools:
 - name: update_alert_status
   group: secops
   use: secops_tools.tools:update_alert_status_tool
-- name: get_mock_auth_user_context
-  group: secops
-  use: secops_tools.tools:get_mock_auth_user_context
-- name: kick_mock_auth_user_sessions
-  group: secops
-  use: secops_tools.tools:kick_mock_auth_user_sessions
-- name: disable_mock_auth_user
-  group: secops
-  use: secops_tools.tools:disable_mock_auth_user
-- name: create_mock_ticket
-  group: secops
-  use: secops_tools.tools:create_mock_ticket_tool
-- name: get_mock_ticket_external_status
-  group: secops
-  use: secops_tools.tools:get_mock_ticket_external_status_tool
 tool_search:
   enabled: false
 uploads:
