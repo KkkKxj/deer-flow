@@ -149,7 +149,7 @@ def test_update_alert_status_resolves_alert_id_from_thread_binding(monkeypatch):
                 url=binding_url,
             ),
             ("PATCH", status_url): _FakeResponse(
-                {"id": "1019", "status": "processed"},
+                {"id": "1019", "status": "processing"},
                 method="PATCH",
                 url=status_url,
             ),
@@ -159,17 +159,110 @@ def test_update_alert_status_resolves_alert_id_from_thread_binding(monkeypatch):
     monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
     monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
 
-    result = _run(secops_tools.update_alert_status_tool, runtime=_runtime(thread_id=thread_id), status="processed")
+    result = _run(secops_tools.update_alert_status_tool, runtime=_runtime(thread_id=thread_id), status="processing")
 
     assert result["ok"] is True
     assert result["alertId"] == "1019"
     assert fake_client.gets == [(binding_url, None)]
-    assert fake_client.patches == [(status_url, {"status": "processed"}, None)]
+    assert fake_client.patches == [(status_url, {"status": "processing"}, None)]
+
+
+def test_complete_alert_with_report_posts_report_backed_completion(monkeypatch):
+    base_url = "http://biz-service.local"
+    complete_url = f"{base_url}/api/biz/alerts/1019/complete-with-report"
+    payload = {
+        "alert": {
+            "id": "1019",
+            "status": "processed",
+            "reportUrl": "http://biz-service.local/api/biz/public/alert-reports/1019",
+        },
+        "report": {"id": "report-1019", "alertId": "1019", "finalStatus": "processed"},
+    }
+    fake_client = _FakeClient({("POST", complete_url): _FakeResponse(payload, method="POST", url=complete_url)})
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+    monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
+
+    result = _run(
+        secops_tools.complete_alert_with_report_tool,
+        runtime=_runtime(alert_id="1019"),
+        status="processed",
+        title="Alert handled",
+        summary="The alert was handled.",
+        content_markdown="# Alert handled",
+    )
+
+    assert result["ok"] is True
+    assert result["alertId"] == "1019"
+    assert result["status"] == "processed"
+    assert result["reportUrl"] == "http://biz-service.local/api/biz/public/alert-reports/1019"
+    assert fake_client.posts == [
+        (
+            complete_url,
+            {
+                "status": "processed",
+                "title": "Alert handled",
+                "summary": "The alert was handled.",
+                "contentMarkdown": "# Alert handled",
+                "agentName": "secops-agent",
+                "threadId": None,
+                "runId": None,
+            },
+            None,
+        )
+    ]
+
+
+def test_complete_alert_with_report_resolves_alert_id_from_thread_binding(monkeypatch):
+    base_url = "http://biz-service.local"
+    thread_id = "thread-1"
+    binding_url = f"{base_url}/api/biz/alerts/workspace-threads/{thread_id}"
+    complete_url = f"{base_url}/api/biz/alerts/1019/complete-with-report"
+    fake_client = _FakeClient(
+        {
+            ("GET", binding_url): _FakeResponse(
+                {"alertId": "1019", "threadId": thread_id},
+                method="GET",
+                url=binding_url,
+            ),
+            ("POST", complete_url): _FakeResponse(
+                {
+                    "alert": {
+                        "id": "1019",
+                        "status": "failed",
+                        "reportUrl": "http://biz-service.local/api/biz/public/alert-reports/1019",
+                    },
+                    "report": {"id": "report-1019", "alertId": "1019", "finalStatus": "failed"},
+                },
+                method="POST",
+                url=complete_url,
+            ),
+        }
+    )
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+    monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
+
+    result = _run(
+        secops_tools.complete_alert_with_report_tool,
+        runtime=_runtime(thread_id=thread_id),
+        status="failed",
+        title="Alert failed",
+        summary="The alert could not be verified.",
+        content_markdown="# Alert failed",
+    )
+
+    assert result["ok"] is True
+    assert result["alertId"] == "1019"
+    assert result["status"] == "failed"
+    assert fake_client.gets == [(binding_url, None)]
+    assert fake_client.posts[0][0] == complete_url
 
 
 def test_secops_native_tools_are_core_alert_lifecycle_only():
     assert hasattr(secops_tools, "get_alert_workspace_context_tool")
     assert hasattr(secops_tools, "update_alert_status_tool")
+    assert hasattr(secops_tools, "complete_alert_with_report_tool")
 
     forbidden_mock_tool_names = tuple(
         "_".join(parts)

@@ -1,7 +1,7 @@
 ---
 name: mock-illegal-login-responder
 description: Use this skill when the current alert type is `mock-user-illegal-login` and the operator wants the workspace to execute the mock-auth containment SOP against user `test`.
-allowed-tools: ["get_alert_workspace_context", "update_alert_status", "bash"]
+allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]
 ---
 
 # Mock Illegal Login Responder
@@ -19,7 +19,7 @@ Load this skill only when the active alert is `mock-user-illegal-login` or the o
 - Call `get_alert_workspace_context()` first; let the tool resolve the alert from the active thread binding.
 - If the alert type does not match `mock-user-illegal-login`, stop and explain the mismatch.
 - Use `alert.sourceIp` from `get_alert_workspace_context` and `commonIp` from script output to decide whether the login is actually anomalous.
-- If any required script output has `ok=false`, mark the alert `failed` with `update_alert_status(status="failed")` before concluding.
+- If any required script output has `ok=false`, generate a failure report and call `complete_alert_with_report(status="failed", ...)` before concluding.
 
 ## SOP
 
@@ -31,10 +31,10 @@ Load this skill only when the active alert is `mock-user-illegal-login` or the o
 6. If the script output has `ok=false`, stop and explain that the user context could not be retrieved.
 7. If `commonIp` is missing, stop and explain that the abnormal-login judgement cannot be completed.
 8. Compare `alert.sourceIp` with `commonIp`.
-9. If `alert.sourceIp` matches `commonIp`, treat the login as not anomalous, call `update_alert_status(status="processed")`, and summarize that no containment was required.
+9. If `alert.sourceIp` matches `commonIp`, treat the login as not anomalous, generate a Markdown report explaining that no containment was required, call `complete_alert_with_report(status="processed", title="Illegal login alert processed", summary="The login matched the user's common IP and was classified as not anomalous.", content_markdown=<generated_report>)`, and summarize that no containment was required.
 10. If `alert.sourceIp` differs from `commonIp`, call `update_alert_status(status="processing")`.
 11. Run `python /mnt/skills/custom/secops/mock-illegal-login-responder/scripts/mock_auth.py kick --username test`.
 12. Run `python /mnt/skills/custom/secops/mock-illegal-login-responder/scripts/mock_auth.py disable --username test`.
-13. If both required script outputs return `ok=true`, call `update_alert_status(status="processed")`.
-14. If any required script output has `ok=false`, mark the alert `failed` with `update_alert_status(status="failed")` and summarize the failed script output.
+13. If both required script outputs return `ok=true`, generate a Markdown report with alert summary, common IP comparison, kicked session count, disabled state, final result, residual risk, and follow-up recommendations, then call `complete_alert_with_report(status="processed", title="Illegal login containment completed", summary="The anomalous login was contained by kicking active sessions and disabling the user.", content_markdown=<generated_report>)`.
+14. If any required script output has `ok=false`, generate a failure report with the failed script output and call `complete_alert_with_report(status="failed", title="Illegal login containment failed", summary="The anomalous login could not be fully contained because a required mock-auth step failed.", content_markdown=<generated_report>)`.
 15. Summarize the source IP, common IP, whether the login was anomalous, the kicked session count, the final disabled state, and any residual risk.

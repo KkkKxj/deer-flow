@@ -111,6 +111,9 @@ tools:
 - name: update_alert_status
   group: secops
   use: secops_tools.tools:update_alert_status_tool
+- name: complete_alert_with_report
+  group: secops
+  use: secops_tools.tools:complete_alert_with_report_tool
 tool_search:
   enabled: false
 uploads:

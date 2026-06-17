@@ -48,15 +48,15 @@ def test_false_positive_skills_use_v2_tool_confirmed_status_updates():
 
         assert "Call `get_alert_workspace_context()` first" in text
         assert "If the tool returns `ok=false`, stop" in text
-        assert 'update_alert_status(status="processed")' in text
-        assert "Do not claim the alert was processed unless the status update returns `ok=true`" in text
+        assert 'complete_alert_with_report(status="processed"' in text
+        assert "Do not claim the alert was processed unless report-backed completion returns `ok=true`" in text
 
 
 def test_false_positive_skills_are_core_tool_only():
     for skill_name in ("ddos-attack-responder", "port-scanning-responder"):
         text = _read(SECOPS_SKILLS[skill_name])
 
-        assert 'allowed-tools: ["get_alert_workspace_context", "update_alert_status"]' in text
+        assert 'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report"]' in text
         assert "scripts/" not in text
         assert "get_mock_" not in text
         assert "create_mock_ticket" not in text
@@ -66,16 +66,16 @@ def test_mock_illegal_login_skill_documents_script_based_v2_sop():
     text = _read(SECOPS_SKILLS["mock-illegal-login-responder"])
 
     required_fragments = (
-        'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "bash"]',
+        'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]',
         "scripts/mock_auth.py context --username test",
         "scripts/mock_auth.py kick --username test",
         "scripts/mock_auth.py disable --username test",
         "`alert.sourceIp`",
         "`commonIp`",
         'update_alert_status(status="processing")',
-        'update_alert_status(status="processed")',
-        'update_alert_status(status="failed")',
-        "If any required script output has `ok=false`, mark the alert `failed`",
+        'complete_alert_with_report(status="processed"',
+        'complete_alert_with_report(status="failed"',
+        "If any required script output has `ok=false`, generate a failure report",
     )
 
     for fragment in required_fragments:
@@ -86,7 +86,7 @@ def test_mock_external_ticket_skill_documents_script_based_callback_contract():
     text = _read(SECOPS_SKILLS["mock-external-ticket-responder"])
 
     required_fragments = (
-        'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "bash"]',
+        'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]',
         "scripts/mock_ticket.py create",
         "--alert-id",
         "--thread-id",
@@ -96,8 +96,8 @@ def test_mock_external_ticket_skill_documents_script_based_callback_contract():
         "Callback branch",
         "Do not create a new ticket",
         "scripts/mock_ticket.py status --external-task-id",
-        'update_alert_status(status="processed")',
-        'update_alert_status(status="failed")',
+        'complete_alert_with_report(status="processed"',
+        'complete_alert_with_report(status="failed"',
     )
 
     for fragment in required_fragments:
@@ -111,3 +111,5 @@ def test_secops_agent_soul_explains_thread_bound_alert_recovery():
     assert "call `get_alert_workspace_context()` first" in text
     assert "recover `alert_id` from the active thread binding" in text
     assert "`alert_id` may be omitted" in text
+    assert "complete_alert_with_report" in text
+    assert 'Do not call `update_alert_status("processed")` or `update_alert_status("failed")`' in text
