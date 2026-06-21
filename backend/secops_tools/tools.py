@@ -6,6 +6,7 @@ business capabilities without modifying DeerFlow harness source code.
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -96,6 +97,34 @@ def _format_http_error(prefix: str, error: Exception, service: str) -> str:
     return f"{prefix}: {error}"
 
 
+def _parse_json_like_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+
+    stripped = value.strip()
+    if stripped == "":
+        return None
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return stripped
+
+
+def _extract_alert_detail(alert: Any) -> Any:
+    if not isinstance(alert, dict):
+        return None
+
+    for field_name in ("detail", "rawPayload"):
+        parsed = _parse_json_like_value(alert.get(field_name))
+        if parsed is not None:
+            return parsed
+
+    return None
+
+
 def fetch_alert_workspace_context(
     alert_id: str,
     *,
@@ -110,7 +139,11 @@ def fetch_alert_workspace_context(
         response.raise_for_status()
         alert = response.json()
 
-    return {"ok": True, "alertId": str(alert_id), "alert": alert}
+    result = {"ok": True, "alertId": str(alert_id), "alert": alert}
+    alert_detail = _extract_alert_detail(alert)
+    if alert_detail is not None:
+        result["alertDetail"] = alert_detail
+    return result
 
 
 def patch_alert_status(
@@ -201,6 +234,9 @@ def get_alert_workspace_context_tool(
     alert_id: str | None = None,
 ) -> dict[str, Any]:
     """Load the authoritative alert workspace context from SecOps biz-service.
+
+    Returns the raw alert as ``alert`` and, when available, parsed source-specific
+    detail as ``alertDetail`` from ``alert.detail`` or ``alert.rawPayload``.
 
     Args:
         alert_id: Optional alert ID. If omitted, the active thread alert ID is used.

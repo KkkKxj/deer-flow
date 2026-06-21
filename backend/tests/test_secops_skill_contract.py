@@ -113,3 +113,11 @@ def test_secops_agent_soul_explains_thread_bound_alert_recovery():
     assert "`alert_id` may be omitted" in text
     assert "complete_alert_with_report" in text
     assert 'Do not call `update_alert_status("processed")` or `update_alert_status("failed")`' in text
+
+
+def test_secops_agent_soul_mentions_source_specific_alert_detail():
+    text = _read(SECOPS_AGENT_SOUL)
+
+    assert "`alertDetail`" in text
+    assert "`alert.detail`" in text
+    assert "`alert.rawPayload`" in text

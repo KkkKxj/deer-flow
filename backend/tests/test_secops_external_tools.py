@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import httpx
@@ -88,6 +89,66 @@ def test_get_alert_workspace_context_uses_runtime_alert_id(monkeypatch):
     assert result["ok"] is True
     assert result["alertId"] == alert_id
     assert result["alert"] == payload
+    assert fake_client.gets == [(alert_url, None)]
+
+
+def test_get_alert_workspace_context_exposes_parsed_alert_detail(monkeypatch):
+    base_url = "http://biz-service.local"
+    alert_id = "1019"
+    alert_url = f"{base_url}/api/biz/alerts/{alert_id}"
+    detail = {
+        "fieldValues": {
+            "judgment_result": "222",
+            "kill_chain": "exploitation",
+        }
+    }
+    payload = {
+        "id": alert_id,
+        "type": "sdwhby-alert",
+        "status": "pending",
+        "detail": json.dumps(detail),
+    }
+    fake_client = _FakeClient({("GET", alert_url): _FakeResponse(payload, method="GET", url=alert_url)})
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+    monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
+
+    result = _run(secops_tools.get_alert_workspace_context_tool, runtime=_runtime(alert_id=alert_id), alert_id=None)
+
+    assert result["ok"] is True
+    assert result["alert"] == payload
+    assert result["alertDetail"] == detail
+    assert fake_client.gets == [(alert_url, None)]
+
+
+def test_get_alert_workspace_context_uses_raw_payload_when_detail_is_absent(monkeypatch):
+    base_url = "http://biz-service.local"
+    alert_id = "1020"
+    alert_url = f"{base_url}/api/biz/alerts/{alert_id}"
+    raw_payload = {
+        "data": {
+            "fieldValues": {
+                "source_ip": "10.169.64.120",
+                "target_ip": "10.168.12.234",
+            }
+        }
+    }
+    payload = {
+        "id": alert_id,
+        "type": "sdwhby-alert",
+        "status": "pending",
+        "rawPayload": json.dumps(raw_payload),
+    }
+    fake_client = _FakeClient({("GET", alert_url): _FakeResponse(payload, method="GET", url=alert_url)})
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+    monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
+
+    result = _run(secops_tools.get_alert_workspace_context_tool, runtime=_runtime(alert_id=alert_id), alert_id=None)
+
+    assert result["ok"] is True
+    assert result["alert"] == payload
+    assert result["alertDetail"] == raw_payload
     assert fake_client.gets == [(alert_url, None)]
 
 
