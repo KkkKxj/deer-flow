@@ -1,4 +1,4 @@
-config_version: 12
+config_version: 14
 log_level: info
 token_usage:
   enabled: false
@@ -201,4 +201,6 @@ tool_output:
   - read_file
   - read_file_tool
 safety_finish_reason:
+  enabled: true
+suggestions:
   enabled: true
