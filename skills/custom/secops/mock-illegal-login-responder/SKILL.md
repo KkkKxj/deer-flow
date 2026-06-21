@@ -1,7 +1,6 @@
 ---
 name: mock-illegal-login-responder
 description: Use this skill when the current alert type is `mock-user-illegal-login` and the operator wants the workspace to execute the mock-auth containment SOP against user `test`.
-allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]
 ---
 
 # Mock Illegal Login Responder

@@ -56,17 +56,22 @@ def test_false_positive_skills_are_core_tool_only():
     for skill_name in ("ddos-attack-responder", "port-scanning-responder"):
         text = _read(SECOPS_SKILLS[skill_name])
 
-        assert 'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report"]' in text
         assert "scripts/" not in text
         assert "get_mock_" not in text
         assert "create_mock_ticket" not in text
+
+
+def test_secops_skills_do_not_declare_allowed_tools():
+    for skill_name, skill_path in SECOPS_SKILLS.items():
+        text = _read(skill_path)
+
+        assert "allowed-tools:" not in text, skill_name
 
 
 def test_mock_illegal_login_skill_documents_script_based_v2_sop():
     text = _read(SECOPS_SKILLS["mock-illegal-login-responder"])
 
     required_fragments = (
-        'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]',
         "scripts/mock_auth.py context --username test",
         "scripts/mock_auth.py kick --username test",
         "scripts/mock_auth.py disable --username test",
@@ -86,7 +91,6 @@ def test_mock_external_ticket_skill_documents_script_based_callback_contract():
     text = _read(SECOPS_SKILLS["mock-external-ticket-responder"])
 
     required_fragments = (
-        'allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]',
         "scripts/mock_ticket.py create",
         "--alert-id",
         "--thread-id",

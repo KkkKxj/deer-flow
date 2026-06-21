@@ -1,7 +1,6 @@
 ---
 name: ddos-attack-responder
 description: Use this skill when the current alert type is `ddos-attack` or `DDoS attack`. Treats all DDoS attack alerts as false positives and completes them with an agent-generated report.
-allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report"]
 ---
 
 # DDoS Attack Responder

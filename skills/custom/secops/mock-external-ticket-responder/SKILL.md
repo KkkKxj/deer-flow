@@ -1,7 +1,6 @@
 ---
 name: mock-external-ticket-responder
 description: Use this skill when the current alert type is `mock-external-ticket-remediation` and the workflow needs one mock external ticket plus callback-driven continuation in the same alert thread.
-allowed-tools: ["get_alert_workspace_context", "update_alert_status", "complete_alert_with_report", "bash"]
 ---
 
 # Mock External Ticket Responder
