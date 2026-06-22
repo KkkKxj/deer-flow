@@ -59,9 +59,11 @@ import {
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
+import { isHiddenFromUIMessage } from "@/core/messages/utils";
 import { useModels } from "@/core/models/hooks";
 import type { Skill } from "@/core/skills";
 import { useSkills } from "@/core/skills/hooks";
+import { useSuggestionsConfig } from "@/core/suggestions/hooks";
 import type { AgentThreadContext } from "@/core/threads";
 import { textOfMessage } from "@/core/threads/utils";
 import { cn } from "@/lib/utils";
@@ -203,6 +205,7 @@ export function InputBox({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [followups, setFollowups] = useState<string[]>([]);
+  const { data: suggestionsConfig } = useSuggestionsConfig();
   const [followupsHidden, setFollowupsHidden] = useState(false);
   const [followupsLoading, setFollowupsLoading] = useState(false);
   const [textareaFocused, setTextareaFocused] = useState(false);
@@ -524,10 +527,14 @@ export function InputBox({
     if (!lastAiId || lastAiId === lastGeneratedForAiIdRef.current) {
       return;
     }
+    if (suggestionsConfig === undefined) {
+      return;
+    }
     lastGeneratedForAiIdRef.current = lastAiId;
 
     const recent = messagesRef.current
       .filter((m) => m.type === "human" || m.type === "ai")
+      .filter((m) => !isHiddenFromUIMessage(m))
       .map((m) => {
         const role = m.type === "human" ? "user" : "assistant";
         const content = textOfMessage(m) ?? "";
@@ -537,6 +544,11 @@ export function InputBox({
       .slice(-6);
 
     if (recent.length === 0) {
+      return;
+    }
+
+    if (!suggestionsConfig?.enabled) {
+      setFollowups([]);
       return;
     }
 
@@ -576,7 +588,14 @@ export function InputBox({
       });
 
     return () => controller.abort();
-  }, [context.model_name, disabled, isMock, status, threadId]);
+  }, [
+    context.model_name,
+    disabled,
+    isMock,
+    status,
+    threadId,
+    suggestionsConfig?.enabled,
+  ]);
 
   return (
     <div
