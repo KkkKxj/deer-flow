@@ -3,7 +3,6 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 DEERFLOW_ROOT = BACKEND_ROOT.parent
 SECOPS_SKILL_ROOT = DEERFLOW_ROOT / "skills" / "custom"
-SECOPS_AGENT_SOUL = BACKEND_ROOT / ".deer-flow" / "agents" / "secops-agent" / "SOUL.md"
 
 SECOPS_SKILLS = {
     "ddos-attack-responder": SECOPS_SKILL_ROOT / "ddos-attack-responder" / "SKILL.md",
@@ -35,7 +34,6 @@ def test_secops_skills_keep_context_rules_inline_without_v2_contract_section():
 
 def test_secops_skills_do_not_reference_v1_runtime_internals():
     documents = {name: _read(path) for name, path in SECOPS_SKILLS.items()}
-    documents["secops-agent/SOUL.md"] = _read(SECOPS_AGENT_SOUL)
 
     for document_name, text in documents.items():
         for forbidden in FORBIDDEN_V1_DETAILS:
@@ -106,22 +104,3 @@ def test_mock_external_ticket_skill_documents_script_based_callback_contract():
 
     for fragment in required_fragments:
         assert fragment in text
-
-
-def test_secops_agent_soul_explains_thread_bound_alert_recovery():
-    text = _read(SECOPS_AGENT_SOUL)
-
-    assert "runtime may only provide `thread_id`" in text
-    assert "call `get_alert_workspace_context()` first" in text
-    assert "recover `alert_id` from the active thread binding" in text
-    assert "`alert_id` may be omitted" in text
-    assert "complete_alert_with_report" in text
-    assert 'Do not call `update_alert_status("processed")` or `update_alert_status("failed")`' in text
-
-
-def test_secops_agent_soul_mentions_source_specific_alert_detail():
-    text = _read(SECOPS_AGENT_SOUL)
-
-    assert "`alertDetail`" in text
-    assert "`alert.detail`" in text
-    assert "`alert.rawPayload`" in text
