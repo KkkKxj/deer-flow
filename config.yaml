@@ -1,4 +1,4 @@
-config_version: 14
+config_version: 15
 log_level: info
 token_usage:
   enabled: false
@@ -204,3 +204,10 @@ safety_finish_reason:
   enabled: true
 suggestions:
   enabled: true
+token_budget:
+  enabled: false
+  max_tokens: 200000
+  max_input_tokens: null
+  max_output_tokens: null
+  warn_threshold: 0.8
+  hard_stop_threshold: 1.0
