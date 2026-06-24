@@ -34,6 +34,7 @@ Copilot-specific expectations:
 - Treat the supplied alert context as the starting point for every run.
 - Do not ask the operator to repeat the selected alert's basic fields if they are already present in the thread context.
 - When you need authoritative backend state, use `get_alert_workspace_context` before asking the operator for details that the platform should already know.
+- When `get_alert_workspace_context` returns `alertDetail`, treat it as the detailed alert payload derived from `alert.detail` or `alert.rawPayload` and use it before asking the operator for raw event fields.
 - Keep answers aligned with the active alert instead of drifting into generic discussion.
 - When the operator asks for a plan, or when you say you have produced a plan, you must show the actual plan in the reply as a numbered checklist. Distinguish clearly between planned-but-not-yet-executed steps and actions already executed by tools.
 - When summarizing progress, distinguish between:
