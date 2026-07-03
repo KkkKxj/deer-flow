@@ -173,6 +173,34 @@ def patch_alert_status(
     }
 
 
+def patch_alert_confidence(
+    alert_id: str,
+    confidence: str,
+    *,
+    base_url: str | None = None,
+    timeout: float = DEFAULT_HTTP_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    normalized_confidence = confidence.strip()
+    if normalized_confidence == "":
+        raise ValueError("confidence is required")
+
+    resolved_base_url = (base_url or _resolve_biz_service_base_url()).rstrip("/")
+    confidence_url = f"{resolved_base_url}/api/biz/alerts/{alert_id}/confidence"
+
+    with httpx.Client(timeout=timeout) as client:
+        response = client.patch(confidence_url, json={"confidence": normalized_confidence})
+        response.raise_for_status()
+        alert = response.json()
+
+    response_confidence = alert.get("confidence") if isinstance(alert, dict) else None
+    return {
+        "ok": True,
+        "alertId": str(alert_id),
+        "confidence": str(response_confidence or normalized_confidence),
+        "alert": alert,
+    }
+
+
 def complete_alert_with_report(
     alert_id: str,
     status: str,
@@ -290,6 +318,41 @@ def update_alert_status_tool(
             "ok": False,
             "alertId": str(resolved_alert_id),
             "error": _format_http_error("Failed to update alert status", error, "biz-service"),
+        }
+
+
+@tool("update_alert_confidence", parse_docstring=True)
+def update_alert_confidence_tool(
+    runtime: ToolRuntime,
+    confidence: str,
+    alert_id: str | None = None,
+) -> dict[str, Any]:
+    """Persist the current alert confidence in SecOps biz-service.
+
+    Args:
+        confidence: Current attack probability or confidence value, such as 25%.
+        alert_id: Optional alert ID. If omitted, the active thread alert ID is used.
+    """
+    resolved_alert_id = _resolve_alert_id(runtime, alert_id)
+    if resolved_alert_id is None:
+        return {
+            "ok": False,
+            "error": "Missing alert_id. Provide an explicit alert_id or run this tool inside an alert-bound thread.",
+        }
+
+    try:
+        result = patch_alert_confidence(resolved_alert_id, confidence)
+        thread_id = _resolve_thread_id(runtime)
+        if thread_id:
+            result["threadId"] = thread_id
+        return result
+    except ValueError as error:
+        return {"ok": False, "alertId": str(resolved_alert_id), "error": str(error)}
+    except Exception as error:  # noqa: BLE001
+        return {
+            "ok": False,
+            "alertId": str(resolved_alert_id),
+            "error": _format_http_error("Failed to update alert confidence", error, "biz-service"),
         }
 
 

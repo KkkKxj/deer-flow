@@ -228,6 +228,68 @@ def test_update_alert_status_resolves_alert_id_from_thread_binding(monkeypatch):
     assert fake_client.patches == [(status_url, {"status": "processing"}, None)]
 
 
+def test_update_alert_confidence_patches_biz_service(monkeypatch):
+    base_url = "http://biz-service.local"
+    confidence_url = f"{base_url}/api/biz/alerts/1019/confidence"
+    payload = {"id": "1019", "confidence": "25%"}
+    fake_client = _FakeClient({("PATCH", confidence_url): _FakeResponse(payload, method="PATCH", url=confidence_url)})
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+    monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
+
+    result = _run(secops_tools.update_alert_confidence_tool, runtime=_runtime(alert_id="1019"), confidence="25%")
+
+    assert result["ok"] is True
+    assert result["alertId"] == "1019"
+    assert result["confidence"] == "25%"
+    assert result["alert"] == payload
+    assert fake_client.patches == [(confidence_url, {"confidence": "25%"}, None)]
+
+
+def test_update_alert_confidence_resolves_alert_id_from_thread_binding(monkeypatch):
+    base_url = "http://biz-service.local"
+    thread_id = "thread-1"
+    binding_url = f"{base_url}/api/biz/alerts/workspace-threads/{thread_id}"
+    confidence_url = f"{base_url}/api/biz/alerts/1019/confidence"
+    fake_client = _FakeClient(
+        {
+            ("GET", binding_url): _FakeResponse(
+                {"alertId": "1019", "threadId": thread_id},
+                method="GET",
+                url=binding_url,
+            ),
+            ("PATCH", confidence_url): _FakeResponse(
+                {"id": "1019", "confidence": "85%"},
+                method="PATCH",
+                url=confidence_url,
+            ),
+        }
+    )
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+    monkeypatch.setattr(secops_tools.httpx, "Client", lambda timeout: fake_client)
+
+    result = _run(secops_tools.update_alert_confidence_tool, runtime=_runtime(thread_id=thread_id), confidence="85%")
+
+    assert result["ok"] is True
+    assert result["alertId"] == "1019"
+    assert result["confidence"] == "85%"
+    assert fake_client.gets == [(binding_url, None)]
+    assert fake_client.patches == [(confidence_url, {"confidence": "85%"}, None)]
+
+
+def test_update_alert_confidence_rejects_blank_confidence(monkeypatch):
+    base_url = "http://biz-service.local"
+
+    monkeypatch.setattr(secops_tools, "_resolve_biz_service_base_url", lambda: base_url)
+
+    result = _run(secops_tools.update_alert_confidence_tool, runtime=_runtime(alert_id="1019"), confidence=" ")
+
+    assert result["ok"] is False
+    assert result["alertId"] == "1019"
+    assert "confidence is required" in result["error"]
+
+
 def test_complete_alert_with_report_posts_report_backed_completion(monkeypatch):
     base_url = "http://biz-service.local"
     complete_url = f"{base_url}/api/biz/alerts/1019/complete-with-report"
@@ -323,6 +385,7 @@ def test_complete_alert_with_report_resolves_alert_id_from_thread_binding(monkey
 def test_secops_native_tools_are_core_alert_lifecycle_only():
     assert hasattr(secops_tools, "get_alert_workspace_context_tool")
     assert hasattr(secops_tools, "update_alert_status_tool")
+    assert hasattr(secops_tools, "update_alert_confidence_tool")
     assert hasattr(secops_tools, "complete_alert_with_report_tool")
 
     forbidden_mock_tool_names = tuple(
