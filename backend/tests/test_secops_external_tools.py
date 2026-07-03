@@ -1,10 +1,14 @@
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 
 import secops_tools.tools as secops_tools
+
+
+DEERFLOW_ROOT = Path(__file__).resolve().parents[2]
 
 
 class _FakeResponse:
@@ -401,3 +405,10 @@ def test_secops_native_tools_are_core_alert_lifecycle_only():
 
     for tool_name in forbidden_mock_tool_names:
         assert not hasattr(secops_tools, tool_name), tool_name
+
+
+def test_deerflow_config_exposes_update_alert_confidence_tool():
+    config_text = (DEERFLOW_ROOT / "config.yaml").read_text(encoding="utf-8")
+
+    assert "name: update_alert_confidence" in config_text
+    assert "secops_tools.tools:update_alert_confidence_tool" in config_text
