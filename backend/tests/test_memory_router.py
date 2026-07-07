@@ -136,6 +136,67 @@ def test_clear_memory_route_returns_cleared_memory() -> None:
     assert response.json()["facts"] == []
 
 
+def test_get_memory_route_can_read_global_and_agent_scoped_memory() -> None:
+    app = FastAPI()
+    app.include_router(memory.router)
+    seen_agent_names: list[str | None] = []
+
+    def fake_get_memory_data(agent_name: str | None = None, *, user_id: str) -> dict:
+        seen_agent_names.append(agent_name)
+        return _sample_memory(
+            facts=[
+                {
+                    "id": f"fact_{agent_name or 'global'}",
+                    "content": "Scoped memory.",
+                    "category": "context",
+                    "confidence": 0.9,
+                    "createdAt": "2026-03-20T00:00:00Z",
+                    "source": "thread-1",
+                }
+            ]
+        )
+
+    with patch("app.gateway.routers.memory.get_memory_data", side_effect=fake_get_memory_data):
+        with TestClient(app) as client:
+            global_response = client.get("/api/memory")
+            agent_response = client.get("/api/memory?agent_name=secops-agent")
+
+    assert global_response.status_code == 200
+    assert agent_response.status_code == 200
+    assert seen_agent_names == [None, "secops-agent"]
+    assert global_response.json()["facts"][0]["id"] == "fact_global"
+    assert agent_response.json()["facts"][0]["id"] == "fact_secops-agent"
+
+
+def test_clear_memory_route_can_clear_agent_scoped_memory() -> None:
+    app = FastAPI()
+    app.include_router(memory.router)
+    seen_agent_names: list[str | None] = []
+
+    def fake_clear(agent_name: str | None = None, *, user_id: str) -> dict:
+        seen_agent_names.append(agent_name)
+        return _sample_memory()
+
+    with patch("app.gateway.routers.memory.clear_memory_data", side_effect=fake_clear):
+        with TestClient(app) as client:
+            response = client.delete("/api/memory?agent_name=secops-agent")
+
+    assert response.status_code == 200
+    assert seen_agent_names == ["secops-agent"]
+    assert response.json()["facts"] == []
+
+
+def test_memory_route_rejects_invalid_agent_name() -> None:
+    app = FastAPI()
+    app.include_router(memory.router)
+
+    with TestClient(app) as client:
+        response = client.get("/api/memory?agent_name=../bad")
+
+    assert response.status_code == 400
+    assert "Invalid agent name" in response.json()["detail"]
+
+
 def test_create_memory_fact_route_returns_updated_memory() -> None:
     app = FastAPI()
     app.include_router(memory.router)
