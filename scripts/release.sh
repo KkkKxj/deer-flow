@@ -238,22 +238,27 @@ ensure_secops_deerflow_network() {
     fi
 }
 
-connect_nginx_to_secops_network() {
+connect_container_to_secops_network() {
+    local container_name="$1"
+    local network_alias="$2"
+
+    docker container inspect "$container_name" >/dev/null
+
+    local attached_networks
+    attached_networks="$(docker inspect "$container_name" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}')"
+    if printf '%s\n' "$attached_networks" | grep -Fx "$SECOPS_DEERFLOW_NETWORK" >/dev/null; then
+        echo "$container_name already attached to $SECOPS_DEERFLOW_NETWORK"
+        return
+    fi
+
+    docker network connect --alias "$network_alias" "$SECOPS_DEERFLOW_NETWORK" "$container_name"
+    echo "Attached $container_name to $SECOPS_DEERFLOW_NETWORK"
+}
+
+connect_runtime_to_secops_network() {
     ensure_secops_deerflow_network
-
-    if ! docker container inspect deer-flow-nginx >/dev/null 2>&1; then
-        echo "deer-flow-nginx is not present; skipped $SECOPS_DEERFLOW_NETWORK network attach"
-        return
-    fi
-
-    if docker inspect deer-flow-nginx --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
-        | grep -Fx "$SECOPS_DEERFLOW_NETWORK" >/dev/null; then
-        echo "deer-flow-nginx already attached to $SECOPS_DEERFLOW_NETWORK"
-        return
-    fi
-
-    docker network connect --alias deer-flow-nginx "$SECOPS_DEERFLOW_NETWORK" deer-flow-nginx
-    echo "Attached deer-flow-nginx to $SECOPS_DEERFLOW_NETWORK"
+    connect_container_to_secops_network "deer-flow-nginx" "deer-flow-nginx"
+    connect_container_to_secops_network "deer-flow-gateway" "deer-flow-gateway"
 }
 
 tag_for_push() {
@@ -310,14 +315,14 @@ case "${1:-release}" in
         pull_images
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
-        connect_nginx_to_secops_network
+        connect_runtime_to_secops_network
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     start)
         set_image_version "$(resolve_image_version)"
         ensure_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
-        connect_nginx_to_secops_network
+        connect_runtime_to_secops_network
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     down)
