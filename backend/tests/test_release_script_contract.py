@@ -44,3 +44,18 @@ def test_release_script_does_not_hide_runtime_inspect_failures() -> None:
     assert 'if ! docker container inspect "$container_name"' not in text
     assert "is not present; skipped" not in text
     assert 'attached_networks="$(docker inspect "$container_name"' in text
+
+
+def test_release_script_preserves_configured_better_auth_secret() -> None:
+    text = SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "load_and_persist_better_auth_secret()" in text
+    assert "ensure_native_runtime_env_files()" in text
+    assert text.count("\n        ensure_native_runtime_env_files\n") == 4
+    assert text.count("\n        ensure_runtime_env_files\n") == 2
+    assert 'mktemp "$DEER_FLOW_HOME/.better-auth-secret.tmp.XXXXXX"' in text
+    assert 'mv -f "$tmp_file" "$secret_file"' in text
+    assert 'chmod 600 "$secret_file"' in text
+    assert "root .env must contain exactly one non-empty BETTER_AUTH_SECRET assignment" in text
+    assert "source " not in text
+    assert 'echo "$BETTER_AUTH_SECRET"' not in text

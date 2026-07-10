@@ -9,16 +9,43 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 TEST_REPO="$TMP_DIR/repo"
 TEST_BIN="$TMP_DIR/bin"
 TEST_LOG="$TMP_DIR/calls.log"
+AUTH_STATUS_FILE="$TMP_DIR/better-auth-status"
+EXPECTED_BETTER_AUTH_FILE="$TMP_DIR/expected-better-auth"
+DEER_FLOW_HOME="$TMP_DIR/runtime-home"
+CONFIGURED_BETTER_AUTH_SECRET="better-auth-test-$$"
 mkdir -p "$TEST_REPO/scripts" "$TEST_REPO/frontend" "$TEST_BIN"
 
 cp "$REPO_ROOT/scripts/release.sh" "$TEST_REPO/scripts/release.sh"
 printf '1.0.0\n' > "$TEST_REPO/.image-version"
-printf 'AUTH_JWT_SECRET=existing-secret\n' > "$TEST_REPO/.env"
+printf 'AUTH_JWT_SECRET=existing-secret\nBETTER_AUTH_SECRET=%s\n' \
+    "$CONFIGURED_BETTER_AUTH_SECRET" > "$TEST_REPO/.env"
+printf '%s\n' "$CONFIGURED_BETTER_AUTH_SECRET" > "$EXPECTED_BETTER_AUTH_FILE"
 printf 'FRONTEND_ENV=present\n' > "$TEST_REPO/frontend/.env"
 
 cat > "$TEST_REPO/scripts/deploy.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+secret_file="$DEER_FLOW_HOME/.better-auth-secret"
+mkdir -p "$DEER_FLOW_HOME"
+if [ -z "${BETTER_AUTH_SECRET:-}" ]; then
+    if [ -f "$secret_file" ]; then
+        BETTER_AUTH_SECRET="$(cat "$secret_file")"
+    else
+        BETTER_AUTH_SECRET="native-generated-for-test"
+        printf '%s\n' "$BETTER_AUTH_SECRET" > "$secret_file"
+        chmod 600 "$secret_file"
+    fi
+    export BETTER_AUTH_SECRET
+fi
+
+expected_better_auth_secret="$(cat "$EXPECTED_BETTER_AUTH_FILE")"
+if [ "$BETTER_AUTH_SECRET" = "$expected_better_auth_secret" ] \
+    && cmp -s "$EXPECTED_BETTER_AUTH_FILE" "$secret_file"; then
+    printf 'MATCH\n' > "$AUTH_STATUS_FILE"
+else
+    printf 'MISMATCH\n' > "$AUTH_STATUS_FILE"
+fi
 
 printf 'deploy %s\n' "$*" >> "$TEST_LOG"
 EOF
@@ -112,8 +139,28 @@ EOF
 
 chmod +x "$TEST_REPO/scripts/deploy.sh" "$TEST_REPO/scripts/provision-secops-user.sh"
 chmod +x "$TEST_BIN/git" "$TEST_BIN/docker"
-export TEST_REPO TEST_LOG
-PATH="$TEST_BIN:$PATH" bash "$TEST_REPO/scripts/release.sh" up
+export TEST_REPO TEST_LOG AUTH_STATUS_FILE EXPECTED_BETTER_AUTH_FILE DEER_FLOW_HOME
+status=0
+unset BETTER_AUTH_SECRET
+
+rm -rf "$DEER_FLOW_HOME"
+: > "$TEST_LOG"
+bash "$TEST_REPO/scripts/deploy.sh" start
+if [ "$(cat "$AUTH_STATUS_FILE")" != "MISMATCH" ]; then
+    echo "native deploy unexpectedly consumed the root Better Auth configuration" >&2
+    status=1
+fi
+
+rm -rf "$DEER_FLOW_HOME"
+: > "$TEST_LOG"
+NORMAL_STDOUT="$TMP_DIR/normal-up.out"
+NORMAL_STDERR="$TMP_DIR/normal-up.err"
+PATH="$TEST_BIN:$PATH" bash "$TEST_REPO/scripts/release.sh" up \
+    > "$NORMAL_STDOUT" 2> "$NORMAL_STDERR"
+if grep -Fq "$CONFIGURED_BETTER_AUTH_SECRET" "$NORMAL_STDOUT" "$NORMAL_STDERR"; then
+    echo "release up exposed the Better Auth secret" >&2
+    status=1
+fi
 
 cat > "$TMP_DIR/expected.log" <<'EOF'
 git pull --ff-only
@@ -133,8 +180,19 @@ docker network connect --alias deer-flow-gateway secops-deerflow deer-flow-gatew
 provision
 EOF
 
-status=0
 diff -u "$TMP_DIR/expected.log" "$TEST_LOG" || status=1
+if [ "$(cat "$AUTH_STATUS_FILE")" != "MATCH" ]; then
+    echo "release wrapper did not preserve the configured Better Auth secret" >&2
+    status=1
+fi
+if ! cmp -s "$EXPECTED_BETTER_AUTH_FILE" "$DEER_FLOW_HOME/.better-auth-secret"; then
+    echo "persisted Better Auth secret does not match the root configuration" >&2
+    status=1
+fi
+if [ "$(stat -c '%a' "$DEER_FLOW_HOME/.better-auth-secret")" != "600" ]; then
+    echo "persisted Better Auth secret does not have mode 600" >&2
+    status=1
+fi
 
 : > "$TEST_LOG"
 if ! PATH="$TEST_BIN:$PATH" bash "$TEST_REPO/scripts/release.sh" start; then
@@ -276,4 +334,43 @@ provision
 EOF
 
 diff -u "$TMP_DIR/expected-already-connected.log" "$TEST_LOG" || status=1
+
+assert_invalid_better_auth_env() {
+    local case_name="$1"
+    local command
+
+    for command in build up start; do
+        : > "$TEST_LOG"
+        local stdout_file="$TMP_DIR/${case_name}-${command}.out"
+        local stderr_file="$TMP_DIR/${case_name}-${command}.err"
+        if PATH="$TEST_BIN:$PATH" bash "$TEST_REPO/scripts/release.sh" "$command" \
+            > "$stdout_file" 2> "$stderr_file"; then
+            echo "release $command unexpectedly accepted $case_name BETTER_AUTH_SECRET" >&2
+            status=1
+        fi
+
+        if ! grep -Fx \
+            "root .env must contain exactly one non-empty BETTER_AUTH_SECRET assignment" \
+            "$stderr_file" >/dev/null; then
+            echo "release $command did not report the $case_name BETTER_AUTH_SECRET error" >&2
+            status=1
+        fi
+        if grep -Eq '^(deploy |provision$)' "$TEST_LOG"; then
+            echo "release $command continued to deploy or provision with $case_name BETTER_AUTH_SECRET" >&2
+            status=1
+        fi
+        if grep -Fq "$CONFIGURED_BETTER_AUTH_SECRET" "$stdout_file" "$stderr_file"; then
+            echo "release $command exposed the Better Auth secret" >&2
+            status=1
+        fi
+    done
+}
+
+printf 'AUTH_JWT_SECRET=existing-secret\n' > "$TEST_REPO/.env"
+assert_invalid_better_auth_env missing
+
+printf 'AUTH_JWT_SECRET=existing-secret\nBETTER_AUTH_SECRET=%s\nBETTER_AUTH_SECRET=%s\n' \
+    "$CONFIGURED_BETTER_AUTH_SECRET" "$CONFIGURED_BETTER_AUTH_SECRET" > "$TEST_REPO/.env"
+assert_invalid_better_auth_env duplicate
+
 exit "$status"

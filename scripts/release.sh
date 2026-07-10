@@ -184,6 +184,49 @@ ensure_auth_jwt_secret() {
     echo "Generated AUTH_JWT_SECRET in $env_file"
 }
 
+load_and_persist_better_auth_secret() {
+    local env_file="$REPO_ROOT/.env"
+    local parsed_secret
+
+    if ! parsed_secret="$(awk '
+        BEGIN { count=0 }
+        /^BETTER_AUTH_SECRET=/ {
+            count++
+            value=substr($0, index($0, "=") + 1)
+            sub(/\r$/, "", value)
+        }
+        END {
+            if (count != 1 || value == "") {
+                exit 1
+            }
+            printf "%s", value
+        }
+    ' "$env_file")"; then
+        echo "root .env must contain exactly one non-empty BETTER_AUTH_SECRET assignment" >&2
+        exit 1
+    fi
+
+    BETTER_AUTH_SECRET="$parsed_secret"
+    export BETTER_AUTH_SECRET
+    DEER_FLOW_HOME="${DEER_FLOW_HOME:-$REPO_ROOT/backend/.deer-flow}"
+    export DEER_FLOW_HOME
+    mkdir -p "$DEER_FLOW_HOME"
+
+    local secret_file="$DEER_FLOW_HOME/.better-auth-secret"
+    local tmp_file
+    tmp_file="$(mktemp "$DEER_FLOW_HOME/.better-auth-secret.tmp.XXXXXX")"
+    chmod 600 "$tmp_file"
+    printf '%s\n' "$BETTER_AUTH_SECRET" > "$tmp_file"
+    mv -f "$tmp_file" "$secret_file"
+    chmod 600 "$secret_file"
+    echo "Persisted configured BETTER_AUTH_SECRET to $secret_file"
+}
+
+ensure_native_runtime_env_files() {
+    ensure_runtime_env_files
+    load_and_persist_better_auth_secret
+}
+
 sync_release_branch() {
     if [ "$AUTO_GIT" = "0" ]; then
         echo "Skipped git pull because DEER_FLOW_RELEASE_GIT=0"
@@ -289,7 +332,7 @@ case "${1:-release}" in
         sync_release_branch
         set_image_version "$(resolve_release_version)"
         echo "Releasing DeerFlow image version: $IMAGE_VERSION"
-        ensure_runtime_env_files
+        ensure_native_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" build
         push_images
         write_image_version "$IMAGE_VERSION"
@@ -298,7 +341,7 @@ case "${1:-release}" in
         ;;
     build)
         set_image_version "$(resolve_image_version)"
-        ensure_runtime_env_files
+        ensure_native_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" build
         ;;
     push)
@@ -313,14 +356,14 @@ case "${1:-release}" in
         sync_release_branch
         set_image_version "$(resolve_image_version)"
         pull_images
-        ensure_runtime_env_files
+        ensure_native_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
         connect_runtime_to_secops_network
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
         ;;
     start)
         set_image_version "$(resolve_image_version)"
-        ensure_runtime_env_files
+        ensure_native_runtime_env_files
         "$REPO_ROOT/scripts/deploy.sh" start
         connect_runtime_to_secops_network
         bash "$REPO_ROOT/scripts/provision-secops-user.sh"
