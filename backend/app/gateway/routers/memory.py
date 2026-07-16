@@ -1,18 +1,12 @@
 """Memory API router for retrieving and managing global or agent-scoped memory data."""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from deerflow.agents.memory.updater import (
-    clear_memory_data,
-    create_memory_fact,
-    delete_memory_fact,
-    get_memory_data,
-    import_memory_data,
-    reload_memory_data,
-    update_memory_fact,
-)
+from deerflow.agents.memory import get_memory_manager
 from deerflow.config.agents_config import validate_agent_name
 from deerflow.config.memory_config import get_memory_config
 from deerflow.config.paths import make_safe_user_id
@@ -117,6 +111,24 @@ def _map_memory_fact_value_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=detail)
 
 
+def _require_capability(name: str, *, label: str):
+    """Return a DeerMem-internal capability (bound method) or raise 501.
+
+    ``reload_memory`` / ``create_fact`` / ``delete_fact`` / ``update_fact`` are
+    not on the ``MemoryManager`` ABC -- they are DeerMem-internal. Probe with
+    ``hasattr`` rather than importing DeerMem, so this router has no hard
+    dependency on the default backend: a non-DeerMem (or removed) backend
+    simply lacks the attribute and the endpoint returns 501.
+    """
+    manager = get_memory_manager()
+    if not hasattr(manager, name):
+        raise HTTPException(
+            status_code=501,
+            detail=f"Operation '{label}' not supported by memory backend '{type(manager).__name__}'.",
+        )
+    return getattr(manager, name)
+
+
 class FactCreateRequest(BaseModel):
     """Request model for creating a memory fact."""
 
@@ -136,22 +148,12 @@ class FactPatchRequest(BaseModel):
 class MemoryConfigResponse(BaseModel):
     """Response model for memory configuration."""
 
-    enabled: bool = Field(..., description="Whether memory is enabled")
-    storage_path: str = Field(..., description="Path to memory storage file")
-    debounce_seconds: int = Field(..., description="Debounce time for memory updates")
-    max_facts: int = Field(..., description="Maximum number of facts to store")
-    fact_confidence_threshold: float = Field(..., description="Minimum confidence threshold for facts")
-    injection_enabled: bool = Field(..., description="Whether memory injection is enabled")
-    max_injection_tokens: int = Field(..., description="Maximum tokens for memory injection")
-    token_counting: str = Field(..., description="Token counting strategy for memory injection ('tiktoken' or 'char')")
-    guaranteed_categories: list[str] = Field(
-        ...,
-        description="Fact categories that bypass the regular injection budget (always injected from a reserved allowance)",
-    )
-    guaranteed_token_budget: int = Field(
-        ...,
-        description="Token ceiling for guaranteed-category facts (displaces regular lines in the common case; additive only when guaranteed alone overflows max_injection_tokens)",
-    )
+    enabled: bool = Field(..., description="Whether the memory mechanism is enabled (call-site gate).")
+    mode: Literal["middleware", "tool"] = Field(..., description="Memory operation mode: 'middleware' (passive per-turn LLM summarization) or 'tool' (model calls memory tools directly). Mechanism-level, applies to any backend.")
+    injection_enabled: bool = Field(..., description="Whether memory is injected into the system prompt (call-site gate).")
+    shutdown_flush_timeout_seconds: float = Field(..., description="Hard budget (s) to drain pending memory updates on Gateway graceful shutdown; must fit inside the pod's K8s terminationGracePeriodSeconds.")
+    manager_class: str = Field(..., description="Active memory backend selector (backend name or dotted path).")
+    backend_config: dict = Field(..., description="Backend-private config (self-interpreted by the backend).")
 
 
 class MemoryStatusResponse(BaseModel):
@@ -202,7 +204,7 @@ async def get_memory(http_request: Request, agent_name: str | None = None) -> Me
         }
         ```
     """
-    memory_data = get_memory_data(**_memory_scope(http_request, agent_name))
+    memory_data = get_memory_manager().get_memory(**_memory_scope(http_request, agent_name))
     return MemoryResponse(**memory_data)
 
 
@@ -222,7 +224,15 @@ async def reload_memory(http_request: Request, agent_name: str | None = None) ->
     Returns:
         The reloaded memory data.
     """
-    memory_data = reload_memory_data(**_memory_scope(http_request, agent_name))
+    manager = get_memory_manager()
+    if hasattr(manager, "reload_memory"):
+        memory_data = manager.reload_memory(**_memory_scope(http_request, agent_name))
+    else:
+        # Non-DeerMem backends have no reload concept; return current memory.
+        # (Asymmetry vs fact CRUD, which raises 501 when unsupported: reload is a
+        # read-only refresh, so degrading to get_memory is safe and still useful;
+        # silently no-op'ing a write would hide data loss, so writes fail loud.)
+        memory_data = manager.get_memory(**_memory_scope(http_request, agent_name))
     return MemoryResponse(**memory_data)
 
 
@@ -236,7 +246,7 @@ async def reload_memory(http_request: Request, agent_name: str | None = None) ->
 async def clear_memory(http_request: Request, agent_name: str | None = None) -> MemoryResponse:
     """Clear all persisted memory data."""
     try:
-        memory_data = clear_memory_data(**_memory_scope(http_request, agent_name))
+        memory_data = get_memory_manager().clear_memory(**_memory_scope(http_request, agent_name))
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to clear memory data.") from exc
 
@@ -253,7 +263,8 @@ async def clear_memory(http_request: Request, agent_name: str | None = None) -> 
 async def create_memory_fact_endpoint(request: FactCreateRequest, http_request: Request, agent_name: str | None = None) -> MemoryResponse:
     """Create a single fact manually."""
     try:
-        memory_data = create_memory_fact(
+        create_fact = _require_capability("create_fact", label="create fact")
+        memory_data, fact_id = create_fact(
             content=request.content,
             category=request.category,
             confidence=request.confidence,
@@ -264,6 +275,9 @@ async def create_memory_fact_endpoint(request: FactCreateRequest, http_request: 
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to create memory fact.") from exc
 
+    if fact_id is None:
+        # max_facts cap evicted the new (lower-confidence) fact; it was not stored.
+        raise HTTPException(status_code=409, detail="Fact was not stored because memory.max_facts kept higher-confidence facts")
     return MemoryResponse(**memory_data)
 
 
@@ -277,7 +291,8 @@ async def create_memory_fact_endpoint(request: FactCreateRequest, http_request: 
 async def delete_memory_fact_endpoint(fact_id: str, http_request: Request, agent_name: str | None = None) -> MemoryResponse:
     """Delete a single fact from memory by fact id."""
     try:
-        memory_data = delete_memory_fact(fact_id, **_memory_scope(http_request, agent_name))
+        delete_fact = _require_capability("delete_fact", label="delete fact")
+        memory_data = delete_fact(fact_id, **_memory_scope(http_request, agent_name))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
     except OSError as exc:
@@ -296,7 +311,8 @@ async def delete_memory_fact_endpoint(fact_id: str, http_request: Request, agent
 async def update_memory_fact_endpoint(fact_id: str, request: FactPatchRequest, http_request: Request, agent_name: str | None = None) -> MemoryResponse:
     """Partially update a single fact manually."""
     try:
-        memory_data = update_memory_fact(
+        update_fact = _require_capability("update_fact", label="update fact")
+        memory_data = update_fact(
             fact_id=fact_id,
             content=request.content,
             category=request.category,
@@ -322,7 +338,7 @@ async def update_memory_fact_endpoint(fact_id: str, request: FactPatchRequest, h
 )
 async def export_memory(http_request: Request, agent_name: str | None = None) -> MemoryResponse:
     """Export the current memory data."""
-    memory_data = get_memory_data(**_memory_scope(http_request, agent_name))
+    memory_data = get_memory_manager().get_memory(**_memory_scope(http_request, agent_name))
     return MemoryResponse(**memory_data)
 
 
@@ -336,7 +352,7 @@ async def export_memory(http_request: Request, agent_name: str | None = None) ->
 async def import_memory(request: MemoryResponse, http_request: Request, agent_name: str | None = None) -> MemoryResponse:
     """Import and persist memory data."""
     try:
-        memory_data = import_memory_data(request.model_dump(), **_memory_scope(http_request, agent_name))
+        memory_data = get_memory_manager().import_memory(request.model_dump(), **_memory_scope(http_request, agent_name))
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to import memory data.") from exc
 
@@ -353,34 +369,42 @@ async def get_memory_config_endpoint() -> MemoryConfigResponse:
     """Get the memory system configuration.
 
     Returns:
-        The current memory configuration settings.
+        The current memory configuration. The response is backend-agnostic:
+        ``enabled`` / ``injection_enabled`` / ``mode`` are mechanism-level
+        fields that apply to any backend (``mode`` selects middleware vs tool
+        operation), and ``backend_config`` is an opaque dict the active
+        backend (``manager_class``) self-interprets. DeerMem's knobs
+        (``storage_path``, ``max_facts``, ``debounce_seconds``, ...) live under
+        ``backend_config`` -- they are NOT top-level, because a non-DeerMem
+        backend has its own (different) knobs.
 
     Example Response:
         ```json
         {
             "enabled": true,
-            "storage_path": ".deer-flow/memory.json",
-            "debounce_seconds": 30,
-            "max_facts": 100,
-            "fact_confidence_threshold": 0.7,
             "injection_enabled": true,
-            "max_injection_tokens": 2000,
-            "token_counting": "tiktoken"
+            "shutdown_flush_timeout_seconds": 30.0,
+            "mode": "middleware",
+            "manager_class": "deermem",
+            "backend_config": {
+                "storage_path": "/.../.deer-flow",
+                "debounce_seconds": 30,
+                "max_facts": 100,
+                "fact_confidence_threshold": 0.7,
+                "max_injection_tokens": 2000,
+                "token_counting": "tiktoken"
+            }
         }
         ```
     """
     config = get_memory_config()
     return MemoryConfigResponse(
         enabled=config.enabled,
-        storage_path=config.storage_path,
-        debounce_seconds=config.debounce_seconds,
-        max_facts=config.max_facts,
-        fact_confidence_threshold=config.fact_confidence_threshold,
+        mode=config.mode,
         injection_enabled=config.injection_enabled,
-        max_injection_tokens=config.max_injection_tokens,
-        token_counting=config.token_counting,
-        guaranteed_categories=config.guaranteed_categories,
-        guaranteed_token_budget=config.guaranteed_token_budget,
+        shutdown_flush_timeout_seconds=config.shutdown_flush_timeout_seconds,
+        manager_class=config.manager_class,
+        backend_config=config.backend_config,
     )
 
 
@@ -398,20 +422,16 @@ async def get_memory_status(http_request: Request, agent_name: str | None = None
         Combined memory configuration and current data.
     """
     config = get_memory_config()
-    memory_data = get_memory_data(**_memory_scope(http_request, agent_name))
+    memory_data = get_memory_manager().get_memory(**_memory_scope(http_request, agent_name))
 
     return MemoryStatusResponse(
         config=MemoryConfigResponse(
             enabled=config.enabled,
-            storage_path=config.storage_path,
-            debounce_seconds=config.debounce_seconds,
-            max_facts=config.max_facts,
-            fact_confidence_threshold=config.fact_confidence_threshold,
+            mode=config.mode,
             injection_enabled=config.injection_enabled,
-            max_injection_tokens=config.max_injection_tokens,
-            token_counting=config.token_counting,
-            guaranteed_categories=config.guaranteed_categories,
-            guaranteed_token_budget=config.guaranteed_token_budget,
+            shutdown_flush_timeout_seconds=config.shutdown_flush_timeout_seconds,
+            manager_class=config.manager_class,
+            backend_config=config.backend_config,
         ),
         data=MemoryResponse(**memory_data),
     )
