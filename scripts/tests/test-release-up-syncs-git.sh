@@ -81,6 +81,8 @@ case "$*" in
     "tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend"|\
     "pull kkk2099/kkk:deer-flow-gateway-2.0.0"|\
     "tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway"|\
+    "pull kkk2099/kkk:redis-7-alpine"|\
+    "tag kkk2099/kkk:redis-7-alpine redis:7-alpine"|\
     "network create secops-deerflow")
         ;;
     "network connect --alias deer-flow-nginx secops-deerflow deer-flow-nginx")
@@ -168,6 +170,8 @@ docker pull kkk2099/kkk:deer-flow-frontend-2.0.0
 docker tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend
 docker pull kkk2099/kkk:deer-flow-gateway-2.0.0
 docker tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway
+docker pull kkk2099/kkk:redis-7-alpine
+docker tag kkk2099/kkk:redis-7-alpine redis:7-alpine
 deploy start
 docker network inspect secops-deerflow
 docker network create secops-deerflow
@@ -238,6 +242,8 @@ docker pull kkk2099/kkk:deer-flow-frontend-2.0.0
 docker tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend
 docker pull kkk2099/kkk:deer-flow-gateway-2.0.0
 docker tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway
+docker pull kkk2099/kkk:redis-7-alpine
+docker tag kkk2099/kkk:redis-7-alpine redis:7-alpine
 deploy start
 docker network inspect secops-deerflow
 docker network create secops-deerflow
@@ -271,6 +277,8 @@ docker pull kkk2099/kkk:deer-flow-frontend-2.0.0
 docker tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend
 docker pull kkk2099/kkk:deer-flow-gateway-2.0.0
 docker tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway
+docker pull kkk2099/kkk:redis-7-alpine
+docker tag kkk2099/kkk:redis-7-alpine redis:7-alpine
 deploy start
 docker network inspect secops-deerflow
 docker network create secops-deerflow
@@ -301,6 +309,8 @@ docker pull kkk2099/kkk:deer-flow-frontend-2.0.0
 docker tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend
 docker pull kkk2099/kkk:deer-flow-gateway-2.0.0
 docker tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway
+docker pull kkk2099/kkk:redis-7-alpine
+docker tag kkk2099/kkk:redis-7-alpine redis:7-alpine
 deploy start
 docker network inspect secops-deerflow
 docker network create secops-deerflow
@@ -323,6 +333,8 @@ docker pull kkk2099/kkk:deer-flow-frontend-2.0.0
 docker tag kkk2099/kkk:deer-flow-frontend-2.0.0 deer-flow-frontend
 docker pull kkk2099/kkk:deer-flow-gateway-2.0.0
 docker tag kkk2099/kkk:deer-flow-gateway-2.0.0 deer-flow-gateway
+docker pull kkk2099/kkk:redis-7-alpine
+docker tag kkk2099/kkk:redis-7-alpine redis:7-alpine
 deploy start
 docker network inspect secops-deerflow
 docker network create secops-deerflow

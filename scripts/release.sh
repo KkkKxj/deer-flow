@@ -8,6 +8,7 @@ IMAGE_REPO="${DEER_FLOW_IMAGE_REPO:-kkk2099/kkk}"
 IMAGE_VERSION_FILE="$REPO_ROOT/.image-version"
 IMAGE_VERSION=""
 REGISTRY_SERVICES="${DEER_FLOW_REGISTRY_SERVICES:-frontend gateway}"
+RUNTIME_DEPENDENCIES="${DEER_FLOW_RUNTIME_DEPENDENCIES:-redis}"
 AUTO_GIT="${DEER_FLOW_RELEASE_GIT:-1}"
 SECOPS_DEERFLOW_NETWORK="${SECOPS_DEERFLOW_NETWORK:-secops-deerflow}"
 
@@ -50,6 +51,7 @@ Usage:
 Environment:
   DEER_FLOW_IMAGE_REPO          default: kkk2099/kkk
   DEER_FLOW_REGISTRY_SERVICES   default: frontend gateway
+  DEER_FLOW_RUNTIME_DEPENDENCIES default: redis
   DEER_FLOW_RELEASE_GIT         sync before release/up and commit/push after release, default: 1
 
 Examples:
@@ -269,9 +271,34 @@ remote_image() {
     printf '%s:deer-flow-%s-%s' "$IMAGE_REPO" "$1" "$IMAGE_VERSION"
 }
 
+local_runtime_dependency_image() {
+    case "$1" in
+        redis) printf '%s' 'redis:7-alpine' ;;
+        *)
+            echo "Unsupported DeerFlow runtime dependency: $1" >&2
+            return 1
+            ;;
+    esac
+}
+
+remote_runtime_dependency_image() {
+    case "$1" in
+        redis) printf '%s:redis-7-alpine' "$IMAGE_REPO" ;;
+        *)
+            echo "Unsupported DeerFlow runtime dependency: $1" >&2
+            return 1
+            ;;
+    esac
+}
+
 print_images() {
     for service in $REGISTRY_SERVICES; do
         printf '%-24s -> %s\n' "$(local_image "$service")" "$(remote_image "$service")"
+    done
+    for dependency in $RUNTIME_DEPENDENCIES; do
+        printf '%-24s -> %s\n' \
+            "$(local_runtime_dependency_image "$dependency")" \
+            "$(remote_runtime_dependency_image "$dependency")"
     done
 }
 
@@ -316,12 +343,29 @@ push_images() {
     for service in $REGISTRY_SERVICES; do
         docker push "$(remote_image "$service")"
     done
+    for dependency in $RUNTIME_DEPENDENCIES; do
+        local local_dependency_image
+        local remote_dependency_image
+        local_dependency_image="$(local_runtime_dependency_image "$dependency")"
+        remote_dependency_image="$(remote_runtime_dependency_image "$dependency")"
+        docker pull "$local_dependency_image"
+        docker tag "$local_dependency_image" "$remote_dependency_image"
+        docker push "$remote_dependency_image"
+    done
 }
 
 pull_images() {
     for service in $REGISTRY_SERVICES; do
         docker pull "$(remote_image "$service")"
         docker tag "$(remote_image "$service")" "$(local_image "$service")"
+    done
+    for dependency in $RUNTIME_DEPENDENCIES; do
+        local local_dependency_image
+        local remote_dependency_image
+        local_dependency_image="$(local_runtime_dependency_image "$dependency")"
+        remote_dependency_image="$(remote_runtime_dependency_image "$dependency")"
+        docker pull "$remote_dependency_image"
+        docker tag "$remote_dependency_image" "$local_dependency_image"
     done
 }
 
