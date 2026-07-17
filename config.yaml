@@ -3,26 +3,6 @@ log_level: info
 token_usage:
   enabled: false
 models:
-- name: qwen3.6-plus
-  display_name: Qwen3.6-Plus
-  use: langchain_openai:ChatOpenAI
-  model: qwen3.6-plus
-  api_key: $DASHSCOPE_API_KEY
-  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  request_timeout: 600.0
-  max_retries: 2
-  max_tokens: 8192
-  temperature: 0.7
-  supports_thinking: true
-  supports_vision: true
-  when_thinking_enabled:
-    extra_body:
-      thinking:
-        type: enabled
-  when_thinking_disabled:
-    extra_body:
-      thinking:
-        type: disabled
 - name: qwen3.7-plus
   display_name: Qwen3.7-Plus
   use: langchain_openai:ChatOpenAI
@@ -43,12 +23,12 @@ models:
     extra_body:
       thinking:
         type: disabled
-- name: deepseek-v4-flash
-  display_name: DeepSeek V4 Flash
+- name: hy3
+  display_name: HY3
   use: langchain_openai:ChatOpenAI
-  model: deepseek-v4-flash
-  api_key: sk-dd7349934b6d4e94a8b7e78632774252
-  base_url: https://api.deepseek.com
+  model: hy3
+  api_key: $TENCENTMAAS_API_KEY
+  base_url: https://tokenhub.tencentmaas.com/v1
   request_timeout: 600.0
   max_retries: 2
   max_tokens: 8192
@@ -57,7 +37,7 @@ models:
   display_name: DeepSeek V4 Pro
   use: langchain_openai:ChatOpenAI
   model: deepseek-v4-pro
-  api_key: sk-dd7349934b6d4e94a8b7e78632774252
+  api_key: $DEEPSEEK_API_KEY
   base_url: https://api.deepseek.com
   request_timeout: 600.0
   max_retries: 2
