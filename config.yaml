@@ -1,4 +1,4 @@
-config_version: 15
+config_version: 31
 log_level: info
 token_usage:
   enabled: false
@@ -99,6 +99,7 @@ tools:
   use: secops_tools.tools:complete_alert_with_report_tool
 tool_search:
   enabled: false
+  auto_promote_top_k: 3
 uploads:
   pdf_converter: auto
   auto_convert_documents: false
@@ -111,6 +112,7 @@ sandbox:
   bash_output_max_chars: 20000
   read_file_output_max_chars: 50000
   ls_output_max_chars: 20000
+  bash_command_timeout: 600
 skills:
   path: ../skills
   container_path: /mnt/skills
@@ -148,9 +150,42 @@ memory:
   injection_enabled: true
   max_injection_tokens: 2000
   token_counting: tiktoken
+  shutdown_flush_timeout_seconds: 30.0
+  manager_class: deermem
+  mode: middleware
+  backend_config:
+    storage_path: ''
+    storage_class: file
+    strict_user_scope: false
+    manifest_filename: memory.json
+    file_lock_timeout_seconds: 10
+    retrieval_adapter: fts5
+    debounce_seconds: 30
+    queue_max_depth: 1000
+    model: null
+    max_facts: 100
+    fact_confidence_threshold: 0.7
+    max_injection_tokens: 2000
+    token_counting: tiktoken
+    guaranteed_categories:
+    - correction
+    guaranteed_token_budget: 500
+    staleness_review_enabled: true
+    staleness_age_days: 90
+    staleness_min_candidates: 3
+    staleness_max_removals_per_cycle: 10
+    staleness_protected_categories:
+    - correction
+    staleness_max_lifetime_multiplier: 20.0
+    staleness_max_extension_days: 3650
+    consolidation_enabled: false
+    consolidation_min_facts: 8
+    consolidation_max_groups_per_cycle: 3
+    consolidation_max_sources: 8
 skill_evolution:
   enabled: true
   moderation_model_name: null
+  security_fail_closed: true
 checkpointer:
   type: sqlite
   connection_string: checkpoints.db
@@ -159,6 +194,13 @@ agents_api:
 database:
   backend: sqlite
   sqlite_dir: .deer-flow/data
+  pool_recycle: 300
+  command_timeout: 30
+  checkpoint_channel_mode: full
+  checkpoint_delta:
+    snapshot_frequency: 10
+  checkpoint_graph_cache:
+    accessor_graph_max: 64
 run_events:
   backend: memory
   max_trace_content: 10240
@@ -187,6 +229,7 @@ safety_finish_reason:
   enabled: true
 suggestions:
   enabled: true
+  max_suggestions: 3
 token_budget:
   enabled: false
   max_tokens: 200000
@@ -194,3 +237,30 @@ token_budget:
   max_output_tokens: null
   warn_threshold: 0.8
   hard_stop_threshold: 1.0
+logging:
+  enhance:
+    enabled: false
+    format: text
+max_recursion_limit: 1000
+input_polish:
+  enabled: true
+  max_chars: 4000
+  model_name: null
+read_before_write:
+  enabled: true
+skill_scan:
+  enabled: true
+agent_storage:
+  backend: file
+scheduler:
+  enabled: false
+  poll_interval_seconds: 5
+  lease_seconds: 120
+  max_concurrent_runs: 3
+  min_once_delay_seconds: 60
+run_ownership:
+  lease_seconds: 30
+  grace_seconds: 10
+  heartbeat_enabled: false
+authorization:
+  enabled: false
