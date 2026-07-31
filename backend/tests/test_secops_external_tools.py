@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
+import yaml
 
 import secops_tools.tools as secops_tools
 
@@ -412,3 +413,24 @@ def test_deerflow_config_exposes_update_alert_confidence_tool():
 
     assert "name: update_alert_confidence" in config_text
     assert "secops_tools.tools:update_alert_confidence_tool" in config_text
+
+
+def test_deerflow_config_only_exposes_deepseek_model():
+    config = yaml.safe_load(
+        (DEERFLOW_ROOT / "config.yaml").read_text(encoding="utf-8")
+    )
+
+    assert config["models"] == [
+        {
+            "name": "deepseek-v4-pro",
+            "display_name": "DeepSeek V4 Pro",
+            "use": "langchain_openai:ChatOpenAI",
+            "model": "deepseek-v4-pro",
+            "api_key": "$DEEPSEEK_API_KEY",
+            "base_url": "https://api.deepseek.com",
+            "request_timeout": 600.0,
+            "max_retries": 2,
+            "max_tokens": 8192,
+            "temperature": 0.7,
+        }
+    ]
